@@ -10,6 +10,7 @@
     "lint": "eslint src/",
     "format": "prettier --write src/",
     "format:check": "prettier --check src/",
+    "dev": "tsx src/index.ts",
     "prepare": "husky"
   },
   "lint-staged": {
@@ -30,11 +31,13 @@
     "@commitlint/config-conventional": "^20.5.0",
     "@eslint/js": "^10.0.1",
     "@types/node": "^25.6.0",
+    "dotenv": "^17.4.2",
     "eslint": "^10.2.0",
     "eslint-config-prettier": "^10.1.8",
     "husky": "^9.1.7",
     "lint-staged": "^16.4.0",
     "prettier": "^3.8.2",
+    "tsx": "^4.21.0",
     "typescript": "^5.8.0",
     "typescript-eslint": "^8.58.1"
   }
