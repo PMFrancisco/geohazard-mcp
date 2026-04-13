@@ -60,19 +60,31 @@ function round1(n: number): number {
 // ── Decay constants ─────────────────────────────────────────
 
 const DECAY = {
-  seismic: 0.85, // aftershock risk decays 15%/day
   fire: 0.9, // fires persist, slow decay
 } as const;
+
+/** Omori decay matching riskScore.ts — used for forecast projection */
+function omoriDecay(hoursAgo: number, magnitude: number): number {
+  if (hoursAgo <= 0) return 1.0;
+  const days = hoursAgo / 24;
+  if (magnitude >= 6.0) {
+    const c = 0.5;
+    const p = 0.8;
+    return Math.min(1.0, Math.pow(c, p) / Math.pow(days + c, p));
+  }
+  return Math.pow(0.7, days);
+}
 
 // ── Per-day risk scoring (mirrors riskScore.ts) ─────────────
 
 const LAYER_WEIGHTS = {
-  weather: 0.25,
+  weather: 0.2,
   seismic: 0.25,
   fire: 0.2,
-  airQuality: 0.15,
-  flood: 0.1,
+  airQuality: 0.1,
+  flood: 0.15,
   space: 0.05,
+  volcanic: 0.05,
 } as const;
 
 function scoreWeatherDay(w: NonNullable<ForecastDay['weather']>): number {
@@ -97,15 +109,19 @@ function scoreAqDay(aqi: number): number {
 
 function scoreFloodDay(discharge: number): number {
   if (discharge > 5000) return 1.0;
-  if (discharge > 2000) return 0.6;
+  if (discharge > 2000) return 0.7;
+  if (discharge > 1000) return 0.5;
   if (discharge > 500) return 0.3;
+  if (discharge > 200) return 0.15;
   return 0;
 }
 
 function scoreSpaceDay(kp: number): number {
-  if (kp >= 7) return 1.0;
+  if (kp >= 8) return 1.0;
+  if (kp >= 7) return 0.8;
   if (kp >= 6) return 0.6;
-  if (kp >= 4) return 0.3;
+  if (kp >= 5) return 0.4;
+  if (kp >= 4) return 0.2;
   return 0;
 }
 
@@ -148,8 +164,29 @@ function calculateDayRisk(day: ForecastDay): ForecastDay['risk'] {
     totalWeight += LAYER_WEIGHTS.space;
     if (s > 0.15) factors.push('space');
   }
+  if (day.volcanic && day.volcanic.score > 0) {
+    weightedSum += day.volcanic.score * LAYER_WEIGHTS.volcanic;
+    totalWeight += LAYER_WEIGHTS.volcanic;
+    if (day.volcanic.score > 0.15) factors.push('volcanic');
+  }
 
-  const score = totalWeight > 0 ? round2(weightedSum / totalWeight) : 0;
+  let score = totalWeight > 0 ? weightedSum / totalWeight : 0;
+
+  // Critical-override: prevent extreme single-layer events from being diluted
+  const allScores: number[] = [];
+  if (day.weather) allScores.push(scoreWeatherDay(day.weather));
+  if (day.seismic && day.seismic.score > 0) allScores.push(day.seismic.score);
+  if (day.fire && day.fire.score > 0) allScores.push(day.fire.score);
+  if (day.airQuality) allScores.push(scoreAqDay(day.airQuality.aqi));
+  if (day.flood) allScores.push(scoreFloodDay(day.flood.dischargeM3s));
+  if (day.spaceWeather) allScores.push(scoreSpaceDay(day.spaceWeather.kpIndex));
+  if (day.volcanic && day.volcanic.score > 0)
+    allScores.push(day.volcanic.score);
+  const maxLayer = allScores.length > 0 ? Math.max(...allScores) : 0;
+  if (maxLayer >= 0.9) score = Math.max(score, 0.7);
+  else if (maxLayer >= 0.75) score = Math.max(score, 0.5);
+
+  score = round2(score);
   let level: RiskLevel = 'minimal';
   if (score >= 0.8) level = 'critical';
   else if (score >= 0.6) level = 'high';
@@ -268,9 +305,29 @@ function kpCategory(kp: number): string {
 
 // ── Extract day-0 scores from real-time conditions ──────────
 
-function baselineSeismicScore(c: AggregatedConditions): number {
-  if (!c.risk.layerScores.seismic) return 0;
-  return c.risk.layerScores.seismic;
+function seismicBaseline(c: AggregatedConditions): {
+  score: number;
+  maxMagnitude: number;
+  oldestEventHoursAgo: number;
+} {
+  const score = c.risk.layerScores.seismic ?? 0;
+  const maxMag = c.seismic?.maxMagnitude ?? 0;
+  // Find the most significant event's age (the one most likely driving the score)
+  const now = Date.now();
+  let oldestRelevantHours = 0;
+  if (c.seismic) {
+    for (const e of c.seismic.recentEvents) {
+      if (e.magnitude >= maxMag - 0.5) {
+        const h = (now - new Date(e.timeUtc).getTime()) / 3600000;
+        oldestRelevantHours = Math.max(oldestRelevantHours, h);
+      }
+    }
+  }
+  return {
+    score,
+    maxMagnitude: maxMag,
+    oldestEventHoursAgo: oldestRelevantHours,
+  };
 }
 
 function baselineFireScore(c: AggregatedConditions): number {
@@ -318,7 +375,7 @@ export async function getEnsembleForecast(params: {
   if (kpValues) sources.push('forecast:noaa-swpc');
 
   // Step 3: Extract baseline scores for persistent layers
-  const seismicBase = baselineSeismicScore(current);
+  const seismic = seismicBaseline(current);
   const fireBase = baselineFireScore(current);
   const volcanicBase = baselineVolcanicScore(current);
 
@@ -447,14 +504,21 @@ export async function getEnsembleForecast(params: {
       }
     }
 
-    // ── Persistent: Seismic (decay ×0.85/day) ──
-    if (seismicBase > 0) {
-      const decayFactor = Math.pow(DECAY.seismic, dayOffset);
-      const score = round2(seismicBase * decayFactor);
+    // ── Persistent: Seismic (Omori decay from event time) ──
+    if (seismic.score > 0) {
+      const totalHours = seismic.oldestEventHoursAgo + dayOffset * 24;
+      const decayFactor = omoriDecay(totalHours, seismic.maxMagnitude);
+      // Re-apply decay relative to the day-0 decay already baked into the score
+      const day0Decay = omoriDecay(
+        seismic.oldestEventHoursAgo,
+        seismic.maxMagnitude,
+      );
+      const relativeDecay = day0Decay > 0 ? decayFactor / day0Decay : 0;
+      const score = round2(seismic.score * relativeDecay);
       if (score > 0.01) {
         day.seismic = {
           score,
-          decayFactor: round2(decayFactor),
+          decayFactor: round2(relativeDecay),
           source: dayOffset === 0 ? 'realtime' : 'decayed',
         };
       }

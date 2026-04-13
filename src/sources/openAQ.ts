@@ -91,11 +91,21 @@ export async function fetchOpenAQ(
     const loc = locJson.results.find(hasPm) ?? locJson.results[0];
     const distKm = loc.distance / 1000;
 
-    // Build sensor ID → parameter name map
-    const sensorMap = new Map<number, string>();
+    // Build sensor ID → parameter name + units map
+    const sensorMap = new Map<number, { name: string; units: string }>();
     for (const s of loc.sensors) {
-      sensorMap.set(s.id, s.parameter.name.toLowerCase());
+      sensorMap.set(s.id, {
+        name: s.parameter.name.toLowerCase(),
+        units: s.parameter.units.toLowerCase(),
+      });
     }
+
+    // ppm → µg/m³ conversion factors (at 25°C, 1 atm)
+    const PPM_TO_UGM3: Record<string, number> = {
+      o3: 1960,
+      no2: 1880,
+      co: 1145,
+    };
 
     // Step 2: Get latest measurements
     const latestUrl = `https://api.openaq.org/v3/locations/${loc.id}/latest`;
@@ -108,8 +118,15 @@ export async function fetchOpenAQ(
 
     const vals: Record<string, number> = {};
     for (const m of latestJson.results) {
-      const name = sensorMap.get(m.sensorsId);
-      if (name && m.value != null) vals[name] = m.value;
+      const sensor = sensorMap.get(m.sensorsId);
+      if (sensor && m.value != null) {
+        let value = m.value;
+        // Normalise gas measurements to µg/m³
+        if (sensor.units === 'ppm' && PPM_TO_UGM3[sensor.name]) {
+          value *= PPM_TO_UGM3[sensor.name];
+        }
+        vals[sensor.name] = value;
+      }
     }
 
     const pm25 = vals['pm25'] ?? vals['pm2.5'] ?? 0;
@@ -148,6 +165,7 @@ export async function fetchOpenAQ(
       fetchedAt: new Date(),
       data,
       latencyMs: Date.now() - startTime,
+      stationDistanceKm: data.stationDistanceKm,
     };
   } catch (err) {
     return {

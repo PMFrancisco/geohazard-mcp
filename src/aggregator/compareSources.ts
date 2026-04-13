@@ -12,7 +12,7 @@ import { logDiscrepancy } from '../logger/discrepancy.js';
  * Detect numeric discrepancies (>5% delta) between sources that share
  * comparable fields (e.g., both AQ sources report PM2.5).
  */
-function detectDiscrepancies(
+export function detectDiscrepancies(
   location: Coordinates,
   results: SourceResult<unknown>[],
 ): Discrepancy[] {
@@ -38,7 +38,11 @@ function detectDiscrepancies(
         const avg = (Math.abs(a.value) + Math.abs(b.value)) / 2;
         const relativeDelta = avg > 0 ? (delta / avg) * 100 : 0;
 
-        if (relativeDelta > 5) {
+        // Skip likely units mismatches (values differ by >100x)
+        const ratio =
+          Math.max(Math.abs(a.value), Math.abs(b.value)) /
+          Math.min(Math.abs(a.value), Math.abs(b.value));
+        if (relativeDelta > 5 && ratio < 100) {
           const disc: Discrepancy = {
             id: randomUUID(),
             timestampUtc: new Date().toISOString(),
@@ -77,7 +81,7 @@ function extractNumericFields(
 ): void {
   for (const [key, val] of Object.entries(obj)) {
     const path = prefix ? `${prefix}.${key}` : key;
-    if (typeof val === 'number' && isFinite(val)) {
+    if (typeof val === 'number' && isFinite(val) && val !== 0) {
       const existing = out.get(path) ?? [];
       existing.push({ sourceId, value: val });
       out.set(path, existing);

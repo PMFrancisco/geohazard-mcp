@@ -10,6 +10,8 @@ export interface SourceResult<T> {
   data: T | null;
   error?: string;
   latencyMs: number;
+  /** Distance to nearest monitoring station, when available */
+  stationDistanceKm?: number;
 }
 
 export interface WeatherData {
@@ -35,7 +37,7 @@ export interface SeismicEvent {
 export interface SeismicData {
   recentEvents: SeismicEvent[];
   nearestEventDistanceKm: number | null;
-  maxMagnitude24h: number | null;
+  maxMagnitude: number | null;
 }
 
 export interface FireHotspot {
@@ -51,6 +53,7 @@ export interface FireData {
   totalHotspots100km: number;
   totalHotspots500km: number;
   maxBrightness: number | null;
+  nearestDistanceKm: number | null;
 }
 
 export interface AirQualityData {
@@ -88,6 +91,9 @@ export interface VolcanicActivity {
   region: string;
   activityLevel: string;
   date: string;
+  lat: number;
+  lon: number;
+  distanceKm: number;
 }
 
 export interface VolcanicData {
@@ -230,6 +236,7 @@ export interface RiskAssessment {
     airQuality?: number;
     flood?: number;
     space?: number;
+    volcanic?: number;
   };
 }
 

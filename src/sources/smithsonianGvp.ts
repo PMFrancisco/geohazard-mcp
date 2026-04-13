@@ -16,13 +16,29 @@ interface USGSVolcanoAlert {
   obs: string;
 }
 
+function haversineKm(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number,
+): number {
+  const R = 6371;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
 /**
  * USGS Volcano Hazards Program — elevated volcano alerts.
  * Returns all volcanoes at ADVISORY (yellow), WATCH (orange), or WARNING (red).
  * No API key required.
  */
 export async function fetchSmithsonianGvp(
-  _coords: Coordinates,
+  coords: Coordinates,
 ): Promise<SourceResult<VolcanicData>> {
   const startTime = Date.now();
   const ctrl = new AbortController();
@@ -35,12 +51,20 @@ export async function fetchSmithsonianGvp(
 
     const alerts = (await res.json()) as USGSVolcanoAlert[];
 
-    const recentActivity = alerts.map((a) => ({
-      volcanoName: a.vName,
-      region: a.obs.toUpperCase(),
-      activityLevel: mapAlertLevel(a.alertLevel, a.colorCode),
-      date: a.alertDate,
-    }));
+    const recentActivity = alerts.map((a) => {
+      const distanceKm = haversineKm(coords.lat, coords.lon, a.lat, a.long);
+      return {
+        volcanoName: a.vName,
+        region: a.obs.toUpperCase(),
+        activityLevel: mapAlertLevel(a.alertLevel, a.colorCode),
+        date: a.alertDate,
+        lat: a.lat,
+        lon: a.long,
+        distanceKm: Math.round(distanceKm * 10) / 10,
+      };
+    });
+
+    recentActivity.sort((a, b) => a.distanceKm - b.distanceKm);
 
     return {
       sourceId: 'smithsonian-gvp',

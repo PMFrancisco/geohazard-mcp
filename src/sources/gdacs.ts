@@ -70,6 +70,22 @@ export async function fetchGdacs(
       `&days=4`;
 
     const res = await fetch(url, { signal: ctrl.signal });
+
+    // GDACS returns 404 when no events exist in the bounding box
+    if (res.status === 404) {
+      return {
+        sourceId: 'gdacs',
+        ok: true,
+        fetchedAt: new Date(),
+        data: {
+          events: [],
+          totalEvents: 0,
+          hasCyclone: false,
+          maxAlertLevel: 'None' as const,
+        },
+        latencyMs: Date.now() - startTime,
+      };
+    }
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
     const json = (await res.json()) as {

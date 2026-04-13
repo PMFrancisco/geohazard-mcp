@@ -2,6 +2,7 @@ import type {
   ConfidenceLevel,
   ConfidenceScore,
   Coordinates,
+  Discrepancy,
   SourceResult,
 } from '../types/index.js';
 
@@ -30,35 +31,62 @@ function getFreshnessScore(result: SourceResult<unknown>): number {
   return Math.max(0, 0.3 - 0.3 * overRatio);
 }
 
-// Fixed factor based on physical station density in the region
-function getGeoFactor(coords: Coordinates): number {
+// Base factor from regional monitoring density (narrowed range: 0.7–1.0)
+function getBaseGeoFactor(coords: Coordinates): number {
   const { lat, lon } = coords;
   const absLat = Math.abs(lat);
 
   // Open oceans / Polar regions
-  if (absLat > 66) return 0.5;
+  if (absLat > 66) return 0.7;
 
   // North America
   if (lat >= 25 && lat <= 50 && lon >= -130 && lon <= -60) return 1.0;
   // Western Europe
   if (lat >= 35 && lat <= 60 && lon >= -10 && lon <= 30) return 1.0;
   // Japan
-  if (lat >= 30 && lat <= 46 && lon >= 129 && lon <= 146) return 0.9;
+  if (lat >= 30 && lat <= 46 && lon >= 129 && lon <= 146) return 0.95;
   // Australia
-  if (lat >= -44 && lat <= -10 && lon >= 112 && lon <= 154) return 0.9;
+  if (lat >= -44 && lat <= -10 && lon >= 112 && lon <= 154) return 0.95;
   // South Korea
-  if (lat >= 33 && lat <= 39 && lon >= 124 && lon <= 130) return 0.9;
+  if (lat >= 33 && lat <= 39 && lon >= 124 && lon <= 130) return 0.95;
   // Coastal South America
-  if (lat >= -56 && lat <= 12 && lon >= -82 && lon <= -34) return 0.75;
+  if (lat >= -56 && lat <= 12 && lon >= -82 && lon <= -34) return 0.85;
   // Middle East / North Africa
-  if (lat >= 15 && lat <= 40 && lon >= -17 && lon <= 60) return 0.7;
+  if (lat >= 15 && lat <= 40 && lon >= -17 && lon <= 60) return 0.8;
   // Central Asia
-  if (lat >= 30 && lat <= 55 && lon >= 60 && lon <= 90) return 0.65;
+  if (lat >= 30 && lat <= 55 && lon >= 60 && lon <= 90) return 0.8;
   // Sub-Saharan Africa
-  if (lat >= -35 && lat <= 15 && lon >= -17 && lon <= 52) return 0.55;
+  if (lat >= -35 && lat <= 15 && lon >= -17 && lon <= 52) return 0.75;
 
   // Default / open ocean
-  return 0.5;
+  return 0.7;
+}
+
+// Adjust geo-factor based on empirical evidence from source results
+function getGeoFactor(
+  coords: Coordinates,
+  results: SourceResult<unknown>[],
+): number {
+  const base = getBaseGeoFactor(coords);
+
+  // Collect station distances from sources that report them
+  const distances = results
+    .filter((r) => r.ok && r.stationDistanceKm != null)
+    .map((r) => r.stationDistanceKm!);
+
+  if (distances.length === 0) return base;
+
+  // Empirical adjustment: nearby stations → boost toward 1.0, distant → pull toward 0.5
+  const avgDist = distances.reduce((a, b) => a + b, 0) / distances.length;
+  let empirical: number;
+  if (avgDist < 10) empirical = 1.0;
+  else if (avgDist < 25) empirical = 0.9;
+  else if (avgDist < 50) empirical = 0.8;
+  else if (avgDist < 100) empirical = 0.65;
+  else empirical = 0.5;
+
+  // Blend: 60% regional base, 40% empirical evidence
+  return base * 0.6 + empirical * 0.4;
 }
 
 function getLevel(overall: number): {
@@ -74,6 +102,7 @@ function getLevel(overall: number): {
 export function calculateConfidence(
   results: SourceResult<unknown>[],
   coords: Coordinates,
+  discrepancies: Discrepancy[] = [],
 ): ConfidenceScore {
   const total = results.length;
   const okCount = results.filter((r) => r.ok).length;
@@ -91,8 +120,13 @@ export function calculateConfidence(
       ? freshValues.reduce((a, b) => a + b, 0) / freshValues.length
       : 0;
 
-  const geoFactor = getGeoFactor(coords);
-  const overall = sourceRatio * freshnessAvg * geoFactor;
+  const geoFactor = getGeoFactor(coords, results);
+
+  // Penalise confidence when sources strongly disagree (>20% relative delta)
+  const severeCount = discrepancies.filter((d) => d.relativeDelta > 20).length;
+  const discrepancyFactor = Math.max(0.5, 1.0 - 0.1 * severeCount);
+
+  const overall = sourceRatio * freshnessAvg * geoFactor * discrepancyFactor;
   const { level, label } = getLevel(overall);
 
   const sourceDetails: Record<string, { fresh: number; ok: boolean }> = {};
@@ -107,7 +141,7 @@ export function calculateConfidence(
     factors: {
       sourceRatio: Math.round(sourceRatio * 1000) / 1000,
       freshnessAvg: Math.round(freshnessAvg * 1000) / 1000,
-      geoFactor,
+      geoFactor: Math.round(geoFactor * 1000) / 1000,
     },
     sourceDetails,
   };

@@ -19,6 +19,7 @@ import { fetchCmems } from '../sources/cmems.js';
 import { fetchGdacs } from '../sources/gdacs.js';
 import { calculateConfidence } from '../confidence/static.js';
 import { calculateRisk } from './riskScore.js';
+import { detectDiscrepancies } from './compareSources.js';
 import { logSourceCall } from '../logger/discrepancy.js';
 
 /** Fetch all 12 sources in parallel and log each call. */
@@ -92,21 +93,47 @@ export async function fetchAllSources(
 
 /**
  * Merge OpenAQ + Open-Meteo AQ into a single AirQualityData.
- * Prefer OpenAQ when a station is within 50 km; otherwise fall back to Open-Meteo AQ.
+ * When both are available, blend based on OpenAQ station proximity.
  */
 function mergeAirQuality(
   openaqResult: SourceResult<AirQualityData>,
   meteoAqResult: SourceResult<AirQualityData>,
 ): AirQualityData | null {
-  if (openaqResult.ok && openaqResult.data) {
-    const dist = openaqResult.data.stationDistanceKm ?? Infinity;
-    if (dist <= 50) return openaqResult.data;
-  }
-  if (meteoAqResult.ok && meteoAqResult.data) {
-    return meteoAqResult.data;
-  }
-  if (openaqResult.ok && openaqResult.data) return openaqResult.data;
-  return null;
+  const hasOpenaq = openaqResult.ok && openaqResult.data;
+  const hasMeteo = meteoAqResult.ok && meteoAqResult.data;
+
+  if (!hasOpenaq && !hasMeteo) return null;
+  if (!hasOpenaq) return meteoAqResult.data;
+  if (!hasMeteo) return openaqResult.data;
+
+  // Both available — blend based on station distance
+  const oaq = openaqResult.data!;
+  const maq = meteoAqResult.data!;
+  const dist = oaq.stationDistanceKm ?? Infinity;
+
+  let oaqWeight: number;
+  if (dist <= 25) oaqWeight = 0.8;
+  else if (dist <= 50) oaqWeight = 0.6;
+  else oaqWeight = 0.3;
+  const maqWeight = 1 - oaqWeight;
+
+  const blend = (a: number, b: number) =>
+    Math.round(a * oaqWeight + b * maqWeight);
+
+  return {
+    aqi: blend(oaq.aqi, maq.aqi),
+    pm25: blend(oaq.pm25, maq.pm25),
+    pm10: blend(oaq.pm10, maq.pm10),
+    no2: blend(oaq.no2, maq.no2),
+    o3: blend(oaq.o3, maq.o3),
+    ...(oaq.co != null || maq.co != null
+      ? { co: blend(oaq.co ?? maq.co!, maq.co ?? oaq.co!) }
+      : {}),
+    category: oaq.category,
+    dominantPollutant: oaq.dominantPollutant,
+    source: 'openaq',
+    stationDistanceKm: oaq.stationDistanceKm,
+  };
 }
 
 export async function getConditions(
@@ -141,7 +168,8 @@ export async function getConditions(
   const marine = cmemsResult.ok ? cmemsResult.data : null;
   const gdacs = gdacsResult.ok ? gdacsResult.data : null;
 
-  const confidence = calculateConfidence(all, coords);
+  const discrepancies = detectDiscrepancies(coords, all);
+  const confidence = calculateConfidence(all, coords, discrepancies);
   const risk = calculateRisk({
     weather,
     seismic,
@@ -149,6 +177,7 @@ export async function getConditions(
     airQuality,
     flood,
     spaceWeather,
+    volcanic,
     gdacs,
   });
 

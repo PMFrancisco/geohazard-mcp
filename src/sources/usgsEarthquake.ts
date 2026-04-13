@@ -31,14 +31,14 @@ export async function fetchUSGSEarthquake(
 
   try {
     const now = new Date();
-    const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const lookback = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
 
     const url =
       `https://earthquake.usgs.gov/fdsnws/event/1/query` +
       `?format=geojson` +
       `&latitude=${coords.lat}&longitude=${coords.lon}` +
       `&maxradiuskm=${radiusKm}` +
-      `&starttime=${yesterday.toISOString()}`;
+      `&starttime=${lookback.toISOString()}`;
 
     const res = await fetch(url, { signal: ctrl.signal });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -77,7 +77,7 @@ export async function fetchUSGSEarthquake(
     const data: SeismicData = {
       recentEvents: events,
       nearestEventDistanceKm: events.length > 0 ? events[0].distanceKm : null,
-      maxMagnitude24h: magnitudes.length > 0 ? Math.max(...magnitudes) : null,
+      maxMagnitude: magnitudes.length > 0 ? Math.max(...magnitudes) : null,
     };
 
     return {

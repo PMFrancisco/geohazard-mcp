@@ -91,6 +91,7 @@ export async function fetchNASAFirms(
       totalHotspots100km: within100.length,
       totalHotspots500km: within500.length,
       maxBrightness: brightnesses.length > 0 ? Math.max(...brightnesses) : null,
+      nearestDistanceKm: hotspots.length > 0 ? hotspots[0].distanceKm : null,
     };
 
     return {
