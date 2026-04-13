@@ -1,0 +1,15 @@
+services:
+  mcp-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - '3000:3000'
+    environment:
+      - NASA_FIRMS_KEY=${NASA_FIRMS_KEY}
+      - MCP_TRANSPORT=http
+      - MCP_PORT=3000
+      - LOG_DIR=/app/logs
+    volumes:
+      - ./logs:/app/logs
+    restart: unless-stopped
