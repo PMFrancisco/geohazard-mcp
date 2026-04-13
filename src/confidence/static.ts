@@ -10,8 +10,13 @@ const SOURCE_MAX_AGE_MINUTES: Record<string, number> = {
   'nasa-firms': 180,
   'open-meteo': 60,
   openaq: 60,
+  'open-meteo-aq': 60,
   'noaa-nws': 30,
   'noaa-swpc': 30,
+  glofas: 360,
+  'smithsonian-gvp': 1440,
+  'noaa-tsunami': 15,
+  marine: 720,
 };
 
 function getFreshnessScore(result: SourceResult<unknown>): number {

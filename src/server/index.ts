@@ -1,3 +1,10 @@
+import { config } from 'dotenv';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+config({ path: path.resolve(__dirname, '..', '..', '.env') });
+
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { TOOLS } from './tools/registry.js';
@@ -7,12 +14,19 @@ const server = new McpServer({ name: 'planetary-risk', version: '1.0.0' });
 
 // Register every tool once against the MCP server
 for (const [name, { description, schema, handler }] of Object.entries(TOOLS)) {
-  server.tool(name, description, schema.shape, async (args) => {
-    const result = await handler(args as Parameters<typeof handler>[0]);
-    return {
-      content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
-    };
-  });
+  server.tool(
+    name,
+    description,
+    schema.shape,
+    async (args: Record<string, unknown>) => {
+      const result = await handler(args as Parameters<typeof handler>[0]);
+      return {
+        content: [
+          { type: 'text' as const, text: JSON.stringify(result, null, 2) },
+        ],
+      };
+    },
+  );
 }
 
 if (process.env.MCP_TRANSPORT === 'http') {

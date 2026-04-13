@@ -1,9 +1,14 @@
 import { appendFile, mkdir } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { Coordinates, SourceResult } from '../types/index.js';
 
-const LOG_DIR = process.env.LOG_DIR ?? './logs';
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
+const LOG_DIR = process.env.LOG_DIR
+  ? path.resolve(process.env.LOG_DIR)
+  : path.join(PROJECT_ROOT, 'logs');
 
 async function ensureDir() {
   await mkdir(LOG_DIR, { recursive: true });

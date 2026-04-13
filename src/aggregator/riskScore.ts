@@ -1,8 +1,11 @@
 import type {
+  AirQualityData,
   FireData,
+  FloodData,
   RiskAssessment,
   RiskLevel,
   SeismicData,
+  SpaceWeatherData,
   WeatherData,
 } from '../types/index.js';
 
@@ -10,6 +13,9 @@ const LAYER_WEIGHTS = {
   weather: 0.25,
   seismic: 0.25,
   fire: 0.2,
+  airQuality: 0.15,
+  flood: 0.1,
+  space: 0.05,
 } as const;
 
 function scoreWeather(w: WeatherData): number {
@@ -62,6 +68,37 @@ function scoreFire(f: FireData): number {
   return Math.min(score, 1.0);
 }
 
+function scoreAirQuality(aq: AirQualityData): number {
+  const aqi = aq.aqi;
+  if (aqi <= 50) return 0;
+  if (aqi <= 100) return 0.15;
+  if (aqi <= 150) return 0.35;
+  if (aqi <= 200) return 0.55;
+  if (aqi <= 300) return 0.8;
+  return 1.0;
+}
+
+function scoreFlood(f: FloodData): number {
+  switch (f.returnPeriod) {
+    case '> 100y':
+      return 1.0;
+    case '> 20y':
+      return 0.6;
+    case '> 5y':
+      return 0.3;
+    default:
+      return 0;
+  }
+}
+
+function scoreSpaceWeather(sw: SpaceWeatherData): number {
+  const kp = sw.kpIndex;
+  if (kp >= 7) return 1.0;
+  if (kp >= 6) return 0.6;
+  if (kp >= 4) return 0.3;
+  return 0;
+}
+
 function getRiskLevel(score: number): RiskLevel {
   if (score >= 0.8) return 'critical';
   if (score >= 0.6) return 'high';
@@ -74,7 +111,9 @@ export function calculateRisk(layers: {
   weather: WeatherData | null;
   seismic: SeismicData | null;
   fire: FireData | null;
-  airQuality: null; // Phase 2
+  airQuality: AirQualityData | null;
+  flood: FloodData | null;
+  spaceWeather: SpaceWeatherData | null;
 }): RiskAssessment {
   const layerScores: RiskAssessment['layerScores'] = {};
   const mainFactors: string[] = [];
@@ -103,6 +142,30 @@ export function calculateRisk(layers: {
     weightedSum += s * LAYER_WEIGHTS.fire;
     totalWeight += LAYER_WEIGHTS.fire;
     if (s > 0.15) mainFactors.push('fire');
+  }
+
+  if (layers.airQuality) {
+    const s = scoreAirQuality(layers.airQuality);
+    layerScores.airQuality = Math.round(s * 1000) / 1000;
+    weightedSum += s * LAYER_WEIGHTS.airQuality;
+    totalWeight += LAYER_WEIGHTS.airQuality;
+    if (s > 0.15) mainFactors.push('airQuality');
+  }
+
+  if (layers.flood) {
+    const s = scoreFlood(layers.flood);
+    layerScores.flood = Math.round(s * 1000) / 1000;
+    weightedSum += s * LAYER_WEIGHTS.flood;
+    totalWeight += LAYER_WEIGHTS.flood;
+    if (s > 0.15) mainFactors.push('flood');
+  }
+
+  if (layers.spaceWeather) {
+    const s = scoreSpaceWeather(layers.spaceWeather);
+    layerScores.space = Math.round(s * 1000) / 1000;
+    weightedSum += s * LAYER_WEIGHTS.space;
+    totalWeight += LAYER_WEIGHTS.space;
+    if (s > 0.15) mainFactors.push('space');
   }
 
   const overallScore = totalWeight > 0 ? weightedSum / totalWeight : 0;

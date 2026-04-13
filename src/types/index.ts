@@ -59,8 +59,148 @@ export interface AirQualityData {
   pm10: number;
   no2: number;
   o3: number;
+  co?: number;
   category: string;
   dominantPollutant: string;
+  /** Which source provided the data */
+  source: 'openaq' | 'open-meteo-aq';
+  /** Distance to nearest station (OpenAQ only) */
+  stationDistanceKm?: number;
+}
+
+export interface FloodData {
+  returnPeriod: '< 5y' | '> 5y' | '> 20y' | '> 100y';
+  dischargeM3s: number | null;
+  forecastDays: number;
+  riverName: string | null;
+}
+
+export interface SpaceWeatherData {
+  kpIndex: number;
+  kpCategory: string;
+  solarWindSpeedKms: number | null;
+  geomagneticStorm: boolean;
+  auroraAlert: boolean;
+}
+
+export interface VolcanicActivity {
+  volcanoName: string;
+  region: string;
+  activityLevel: string;
+  date: string;
+}
+
+export interface VolcanicData {
+  recentActivity: VolcanicActivity[];
+  nearbyCount: number;
+}
+
+export interface TsunamiWarning {
+  id: string;
+  severity: string;
+  area: string;
+  issuedAt: string;
+  description: string;
+}
+
+export interface TsunamiData {
+  activeWarnings: TsunamiWarning[];
+  hasActiveWarning: boolean;
+}
+
+export interface NWSAlert {
+  id: string;
+  event: string;
+  severity: 'Extreme' | 'Severe' | 'Moderate' | 'Minor' | 'Unknown';
+  urgency: string;
+  headline: string;
+  description: string;
+  onset: string;
+  expires: string;
+}
+
+export interface NWSData {
+  activeAlerts: NWSAlert[];
+  totalAlerts: number;
+}
+
+export interface MarineData {
+  seaSurfaceTempC: number | null;
+  waveHeightM: number | null;
+  currentSpeedKms: number | null;
+  seaLevelAnomalyM: number | null;
+}
+
+export type LayerSource = 'realtime' | 'forecast' | 'decayed';
+
+export interface ForecastDay {
+  date: string;
+  dayOffset: number;
+
+  // Forecastable layers — real projections per day
+  weather?: {
+    tempMin: number;
+    tempMax: number;
+    tempMean: number;
+    tempStddev: number;
+    precipitationMm: number;
+    precipitationProbability: number;
+    precipitationStddev: number;
+    windMaxKmh: number;
+    windMean: number;
+    windStddev: number;
+    uvMax: number;
+    source: LayerSource;
+  };
+  airQuality?: { pm25: number; pm10: number; aqi: number; source: LayerSource };
+  flood?: {
+    dischargeM3s: number;
+    trend: 'rising' | 'falling' | 'stable';
+    source: LayerSource;
+  };
+  spaceWeather?: { kpIndex: number; category: string; source: LayerSource };
+
+  // Persistent layers — real-time with decay on days 1+
+  seismic?: { score: number; decayFactor: number; source: LayerSource };
+  fire?: { score: number; decayFactor: number; source: LayerSource };
+  volcanic?: { score: number; source: LayerSource };
+  tsunami?: { active: boolean; expiresAt: string | null; source: LayerSource };
+  nwsAlerts?: {
+    count: number;
+    maxSeverity: string | null;
+    source: LayerSource;
+  };
+  marine?: { waveHeightM: number | null; source: LayerSource };
+
+  risk: {
+    score: number;
+    level: RiskLevel;
+    mainFactors: string[];
+  };
+  confidence: {
+    overall: number;
+    level: ConfidenceLevel;
+  };
+}
+
+export interface ForecastResponse {
+  location: Coordinates;
+  /** Full real-time snapshot (day 0 baseline) */
+  current: AggregatedConditions;
+  days: ForecastDay[];
+  models: string[];
+  sources: string[];
+  generatedAt: string;
+}
+
+export interface CompareSourcesResponse {
+  location: Coordinates;
+  timestampUtc: string;
+  sources: Record<
+    string,
+    { ok: boolean; data: unknown; latencyMs: number; error?: string }
+  >;
+  discrepancies: Discrepancy[];
 }
 
 export type ConfidenceLevel = 'reliable' | 'partial' | 'limited' | 'estimate';
@@ -102,6 +242,12 @@ export interface AggregatedConditions {
   seismic: SeismicData | null;
   fire: FireData | null;
   airQuality: AirQualityData | null;
+  flood: FloodData | null;
+  spaceWeather: SpaceWeatherData | null;
+  volcanic: VolcanicData | null;
+  tsunami: TsunamiData | null;
+  nwsAlerts: NWSData | null;
+  marine: MarineData | null;
   confidence: ConfidenceScore;
   risk: RiskAssessment;
 }
