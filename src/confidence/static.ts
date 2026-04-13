@@ -17,6 +17,7 @@ const SOURCE_MAX_AGE_MINUTES: Record<string, number> = {
   'smithsonian-gvp': 1440,
   'noaa-tsunami': 15,
   marine: 720,
+  gdacs: 10,
 };
 
 function getFreshnessScore(result: SourceResult<unknown>): number {

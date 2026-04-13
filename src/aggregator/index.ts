@@ -16,11 +16,12 @@ import { fetchGlofas } from '../sources/glofas.js';
 import { fetchSmithsonianGvp } from '../sources/smithsonianGvp.js';
 import { fetchNoaaTsunami } from '../sources/noaaTsunami.js';
 import { fetchCmems } from '../sources/cmems.js';
+import { fetchGdacs } from '../sources/gdacs.js';
 import { calculateConfidence } from '../confidence/static.js';
 import { calculateRisk } from './riskScore.js';
 import { logSourceCall } from '../logger/discrepancy.js';
 
-/** Fetch all 11 sources in parallel and log each call. */
+/** Fetch all 12 sources in parallel and log each call. */
 export async function fetchAllSources(
   coords: Coordinates,
   options: AggregatorOptions = {},
@@ -37,6 +38,7 @@ export async function fetchAllSources(
     gvpResult,
     tsunamiResult,
     cmemsResult,
+    gdacsResult,
   ] = await Promise.all([
     fetchOpenMeteo(coords),
     fetchUSGSEarthquake(coords, options.radiusKm ?? 500),
@@ -49,6 +51,7 @@ export async function fetchAllSources(
     fetchSmithsonianGvp(coords),
     fetchNoaaTsunami(coords),
     fetchCmems(coords),
+    fetchGdacs(coords),
   ]);
 
   const all: SourceResult<unknown>[] = [
@@ -63,6 +66,7 @@ export async function fetchAllSources(
     gvpResult,
     tsunamiResult,
     cmemsResult,
+    gdacsResult,
   ];
 
   for (const r of all) {
@@ -81,6 +85,7 @@ export async function fetchAllSources(
     gvpResult,
     tsunamiResult,
     cmemsResult,
+    gdacsResult,
     all,
   };
 }
@@ -120,6 +125,7 @@ export async function getConditions(
     gvpResult,
     tsunamiResult,
     cmemsResult,
+    gdacsResult,
     all,
   } = await fetchAllSources(coords, options);
 
@@ -133,6 +139,7 @@ export async function getConditions(
   const tsunami = tsunamiResult.ok ? tsunamiResult.data : null;
   const nwsAlerts = nwsResult.ok ? nwsResult.data : null;
   const marine = cmemsResult.ok ? cmemsResult.data : null;
+  const gdacs = gdacsResult.ok ? gdacsResult.data : null;
 
   const confidence = calculateConfidence(all, coords);
   const risk = calculateRisk({
@@ -142,6 +149,7 @@ export async function getConditions(
     airQuality,
     flood,
     spaceWeather,
+    gdacs,
   });
 
   return {
@@ -159,6 +167,7 @@ export async function getConditions(
     tsunami,
     nwsAlerts,
     marine,
+    gdacs,
     confidence,
     risk,
   };

@@ -248,6 +248,7 @@ export interface AggregatedConditions {
   tsunami: TsunamiData | null;
   nwsAlerts: NWSData | null;
   marine: MarineData | null;
+  gdacs: import('../sources/gdacs.js').GdacsData | null;
   confidence: ConfidenceScore;
   risk: RiskAssessment;
 }

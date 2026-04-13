@@ -8,6 +8,7 @@ import type {
   SpaceWeatherData,
   WeatherData,
 } from '../types/index.js';
+import type { GdacsData } from '../sources/gdacs.js';
 
 const LAYER_WEIGHTS = {
   weather: 0.25,
@@ -27,6 +28,19 @@ function scoreWeather(w: WeatherData): number {
   if (w.uvIndex >= 11) score += 0.15;
   if (w.tempC > 45 || w.tempC < -30) score += 0.2;
   return Math.min(score, 1.0);
+}
+
+function scoreCyclone(gdacs: GdacsData): number {
+  const cyclones = gdacs.events.filter((e) => e.eventType === 'TC');
+  if (cyclones.length === 0) return 0;
+
+  let max = 0;
+  for (const c of cyclones) {
+    if (c.alertLevel === 'Red') max = Math.max(max, 1.0);
+    else if (c.alertLevel === 'Orange') max = Math.max(max, 0.6);
+    else max = Math.max(max, 0.15);
+  }
+  return max;
 }
 
 function scoreSeismic(s: SeismicData): number {
@@ -114,18 +128,25 @@ export function calculateRisk(layers: {
   airQuality: AirQualityData | null;
   flood: FloodData | null;
   spaceWeather: SpaceWeatherData | null;
+  gdacs: GdacsData | null;
 }): RiskAssessment {
   const layerScores: RiskAssessment['layerScores'] = {};
   const mainFactors: string[] = [];
   let weightedSum = 0;
   let totalWeight = 0;
 
-  if (layers.weather) {
-    const s = scoreWeather(layers.weather);
+  // Weather layer — boosted by GDACS cyclone data
+  const weatherBase = layers.weather ? scoreWeather(layers.weather) : 0;
+  const cycloneBoost = layers.gdacs ? scoreCyclone(layers.gdacs) : 0;
+  const hasWeatherData = layers.weather || cycloneBoost > 0;
+
+  if (hasWeatherData) {
+    const s = Math.max(weatherBase, cycloneBoost);
     layerScores.weather = Math.round(s * 1000) / 1000;
     weightedSum += s * LAYER_WEIGHTS.weather;
     totalWeight += LAYER_WEIGHTS.weather;
     if (s > 0.15) mainFactors.push('weather');
+    if (cycloneBoost > weatherBase) mainFactors.push('cyclone');
   }
 
   if (layers.seismic) {
