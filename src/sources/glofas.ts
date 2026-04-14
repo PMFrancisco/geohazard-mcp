@@ -1,4 +1,5 @@
 import type { Coordinates, FloodData, SourceResult } from '../types/index.js';
+import { fetchWithTimeout, sourceError } from './http.js';
 
 /**
  * Flood forecast via Open-Meteo Flood API (powered by GloFAS/CEMS data).
@@ -13,8 +14,6 @@ export async function fetchGlofas(
   coords: Coordinates,
 ): Promise<SourceResult<FloodData>> {
   const startTime = Date.now();
-  const ctrl = new AbortController();
-  const timeout = setTimeout(() => ctrl.abort(), 8000);
 
   try {
     const url =
@@ -23,7 +22,7 @@ export async function fetchGlofas(
       `&daily=river_discharge` +
       `&forecast_days=30`;
 
-    const res = await fetch(url, { signal: ctrl.signal });
+    const res = await fetchWithTimeout(url, { timeoutMs: 8000 });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
     const json = (await res.json()) as {
@@ -55,15 +54,6 @@ export async function fetchGlofas(
       latencyMs: Date.now() - startTime,
     };
   } catch (err) {
-    return {
-      sourceId: 'glofas',
-      ok: false,
-      fetchedAt: new Date(),
-      data: null,
-      error: String(err),
-      latencyMs: Date.now() - startTime,
-    };
-  } finally {
-    clearTimeout(timeout);
+    return sourceError<FloodData>('glofas', startTime, err);
   }
 }

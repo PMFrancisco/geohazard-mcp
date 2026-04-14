@@ -3,6 +3,7 @@ import type {
   SourceResult,
   SpaceWeatherData,
 } from '../types/index.js';
+import { fetchWithTimeout, sourceError } from './http.js';
 
 function kpCategory(kp: number): string {
   if (kp < 4) return 'Quiet';
@@ -17,14 +18,12 @@ export async function fetchNoaaSwpc(
   _coords: Coordinates,
 ): Promise<SourceResult<SpaceWeatherData>> {
   const startTime = Date.now();
-  const ctrl = new AbortController();
-  const timeout = setTimeout(() => ctrl.abort(), 5000);
 
   try {
     // Planetary K-index (last 24h entries)
     const kpUrl =
       'https://services.swpc.noaa.gov/products/noaa-planetary-k-index.json';
-    const res = await fetch(kpUrl, { signal: ctrl.signal });
+    const res = await fetchWithTimeout(kpUrl);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
     // Response is array of arrays: [time_tag, Kp, Kp_fraction, a_running, station_count]
@@ -40,13 +39,10 @@ export async function fetchNoaaSwpc(
     // Try solar wind speed
     let solarWindSpeed: number | null = null;
     try {
-      const windCtrl = new AbortController();
-      const windTimeout = setTimeout(() => windCtrl.abort(), 3000);
-      const windRes = await fetch(
+      const windRes = await fetchWithTimeout(
         'https://services.swpc.noaa.gov/products/summary/solar-wind-speed.json',
-        { signal: windCtrl.signal },
+        { timeoutMs: 3000 },
       );
-      clearTimeout(windTimeout);
       if (windRes.ok) {
         const windJson = (await windRes.json()) as { WindSpeed: string };
         solarWindSpeed = parseFloat(windJson.WindSpeed) || null;
@@ -71,15 +67,6 @@ export async function fetchNoaaSwpc(
       latencyMs: Date.now() - startTime,
     };
   } catch (err) {
-    return {
-      sourceId: 'noaa-swpc',
-      ok: false,
-      fetchedAt: new Date(),
-      data: null,
-      error: String(err),
-      latencyMs: Date.now() - startTime,
-    };
-  } finally {
-    clearTimeout(timeout);
+    return sourceError<SpaceWeatherData>('noaa-swpc', startTime, err);
   }
 }

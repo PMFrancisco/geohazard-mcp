@@ -5,90 +5,24 @@ import type {
   Coordinates,
   SourceResult,
 } from '../types/index.js';
-import { fetchOpenMeteo } from '../sources/openMeteo.js';
-import { fetchUSGSEarthquake } from '../sources/usgsEarthquake.js';
-import { fetchNASAFirms } from '../sources/nasaFirms.js';
-import { fetchOpenAQ } from '../sources/openAQ.js';
-import { fetchOpenMeteoAq } from '../sources/openMeteoAq.js';
-import { fetchNoaaNws } from '../sources/noaaNws.js';
-import { fetchNoaaSwpc } from '../sources/noaaSwpc.js';
-import { fetchGlofas } from '../sources/glofas.js';
-import { fetchSmithsonianGvp } from '../sources/smithsonianGvp.js';
-import { fetchNoaaTsunami } from '../sources/noaaTsunami.js';
-import { fetchCmems } from '../sources/cmems.js';
-import { fetchGdacs } from '../sources/gdacs.js';
+import { SOURCES, type DirectSource } from '../sources/registry.js';
 import { calculateConfidence } from '../confidence/static.js';
 import { calculateRisk } from './riskScore.js';
 import { detectDiscrepancies } from './compareSources.js';
 import { logSourceCall } from '../logger/discrepancy.js';
 
-/** Fetch all 12 sources in parallel and log each call. */
+/** Fetch all sources in parallel and log each call. Returns the flat result array. */
 export async function fetchAllSources(
   coords: Coordinates,
   options: AggregatorOptions = {},
-) {
-  const [
-    weatherResult,
-    seismicResult,
-    fireResult,
-    openaqResult,
-    meteoAqResult,
-    nwsResult,
-    swpcResult,
-    glofasResult,
-    gvpResult,
-    tsunamiResult,
-    cmemsResult,
-    gdacsResult,
-  ] = await Promise.all([
-    fetchOpenMeteo(coords),
-    fetchUSGSEarthquake(coords, options.radiusKm ?? 500),
-    fetchNASAFirms(coords, options.firmsKey),
-    fetchOpenAQ(coords),
-    fetchOpenMeteoAq(coords),
-    fetchNoaaNws(coords),
-    fetchNoaaSwpc(coords),
-    fetchGlofas(coords),
-    fetchSmithsonianGvp(coords),
-    fetchNoaaTsunami(coords),
-    fetchCmems(coords),
-    fetchGdacs(coords),
-  ]);
+): Promise<{ all: SourceResult<unknown>[] }> {
+  const all = (await Promise.all(
+    SOURCES.map((s) => s.fetch(coords, options)),
+  )) as SourceResult<unknown>[];
 
-  const all: SourceResult<unknown>[] = [
-    weatherResult,
-    seismicResult,
-    fireResult,
-    openaqResult,
-    meteoAqResult,
-    nwsResult,
-    swpcResult,
-    glofasResult,
-    gvpResult,
-    tsunamiResult,
-    cmemsResult,
-    gdacsResult,
-  ];
+  for (const r of all) logSourceCall({ ...r, location: coords });
 
-  for (const r of all) {
-    logSourceCall({ ...r, location: coords });
-  }
-
-  return {
-    weatherResult,
-    seismicResult,
-    fireResult,
-    openaqResult,
-    meteoAqResult,
-    nwsResult,
-    swpcResult,
-    glofasResult,
-    gvpResult,
-    tsunamiResult,
-    cmemsResult,
-    gdacsResult,
-    all,
-  };
+  return { all };
 }
 
 /**
@@ -106,7 +40,6 @@ function mergeAirQuality(
   if (!hasOpenaq) return meteoAqResult.data;
   if (!hasMeteo) return openaqResult.data;
 
-  // Both available — blend based on station distance
   const oaq = openaqResult.data!;
   const maq = meteoAqResult.data!;
   const dist = oaq.stationDistanceKm ?? Infinity;
@@ -140,63 +73,43 @@ export async function getConditions(
   coords: Coordinates,
   options: AggregatorOptions = {},
 ): Promise<AggregatedConditions> {
-  const {
-    weatherResult,
-    seismicResult,
-    fireResult,
-    openaqResult,
-    meteoAqResult,
-    nwsResult,
-    swpcResult,
-    glofasResult,
-    gvpResult,
-    tsunamiResult,
-    cmemsResult,
-    gdacsResult,
-    all,
-  } = await fetchAllSources(coords, options);
+  const { all } = await fetchAllSources(coords, options);
 
-  const weather = weatherResult.ok ? weatherResult.data : null;
-  const seismic = seismicResult.ok ? seismicResult.data : null;
-  const fire = fireResult.ok ? fireResult.data : null;
-  const airQuality = mergeAirQuality(openaqResult, meteoAqResult);
-  const flood = glofasResult.ok ? glofasResult.data : null;
-  const spaceWeather = swpcResult.ok ? swpcResult.data : null;
-  const volcanic = gvpResult.ok ? gvpResult.data : null;
-  const tsunami = tsunamiResult.ok ? tsunamiResult.data : null;
-  const nwsAlerts = nwsResult.ok ? nwsResult.data : null;
-  const marine = cmemsResult.ok ? cmemsResult.data : null;
-  const gdacs = gdacsResult.ok ? gdacsResult.data : null;
+  const conditions: Partial<AggregatedConditions> = {};
+  SOURCES.forEach((s, i) => {
+    if (s.kind === 'direct') {
+      (s as DirectSource).apply(conditions, all[i] as SourceResult<never>);
+    }
+  });
+
+  const openaqIdx = SOURCES.findIndex((s) => s.id === 'openaq');
+  const meteoAqIdx = SOURCES.findIndex((s) => s.id === 'open-meteo-aq');
+  const airQuality = mergeAirQuality(
+    all[openaqIdx] as SourceResult<AirQualityData>,
+    all[meteoAqIdx] as SourceResult<AirQualityData>,
+  );
+  conditions.airQuality = airQuality;
 
   const discrepancies = detectDiscrepancies(coords, all);
   const confidence = calculateConfidence(all, coords, discrepancies);
-  const risk = calculateRisk({
-    weather,
-    seismic,
-    fire,
-    airQuality,
-    flood,
-    spaceWeather,
-    volcanic,
-    gdacs,
-  });
+  const risk = calculateRisk(conditions, airQuality);
 
   return {
     location: coords,
     timestampUtc: new Date().toISOString(),
     sourcesQueried: all.map((r) => r.sourceId),
     sourcesFailed: all.filter((r) => !r.ok).map((r) => r.sourceId),
-    weather,
-    seismic,
-    fire,
+    weather: conditions.weather ?? null,
+    seismic: conditions.seismic ?? null,
+    fire: conditions.fire ?? null,
     airQuality,
-    flood,
-    spaceWeather,
-    volcanic,
-    tsunami,
-    nwsAlerts,
-    marine,
-    gdacs,
+    flood: conditions.flood ?? null,
+    spaceWeather: conditions.spaceWeather ?? null,
+    volcanic: conditions.volcanic ?? null,
+    tsunami: conditions.tsunami ?? null,
+    nwsAlerts: conditions.nwsAlerts ?? null,
+    marine: conditions.marine ?? null,
+    gdacs: conditions.gdacs ?? null,
     confidence,
     risk,
   };

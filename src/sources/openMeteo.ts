@@ -1,4 +1,5 @@
 import type { Coordinates, SourceResult, WeatherData } from '../types/index.js';
+import { fetchWithTimeout, sourceError } from './http.js';
 
 const WMO_CODES: Record<number, string> = {
   0: 'Clear sky',
@@ -31,8 +32,6 @@ export async function fetchOpenMeteo(
   coords: Coordinates,
 ): Promise<SourceResult<WeatherData>> {
   const startTime = Date.now();
-  const ctrl = new AbortController();
-  const timeout = setTimeout(() => ctrl.abort(), 5000);
 
   try {
     const url =
@@ -41,7 +40,7 @@ export async function fetchOpenMeteo(
       `&current=temperature_2m,apparent_temperature,relative_humidity_2m,wind_speed_10m,precipitation,uv_index,weather_code` +
       `&timezone=auto`;
 
-    const res = await fetch(url, { signal: ctrl.signal });
+    const res = await fetchWithTimeout(url);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
     const json = (await res.json()) as {
@@ -67,15 +66,6 @@ export async function fetchOpenMeteo(
       latencyMs: Date.now() - startTime,
     };
   } catch (err) {
-    return {
-      sourceId: 'open-meteo',
-      ok: false,
-      fetchedAt: new Date(),
-      data: null,
-      error: String(err),
-      latencyMs: Date.now() - startTime,
-    };
-  } finally {
-    clearTimeout(timeout);
+    return sourceError<WeatherData>('open-meteo', startTime, err);
   }
 }

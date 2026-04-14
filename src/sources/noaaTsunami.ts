@@ -1,4 +1,5 @@
 import type { Coordinates, SourceResult, TsunamiData } from '../types/index.js';
+import { fetchWithTimeout, sourceError } from './http.js';
 
 /**
  * NOAA Tsunami Warning Center — active tsunami advisories.
@@ -9,13 +10,10 @@ export async function fetchNoaaTsunami(
   _coords: Coordinates,
 ): Promise<SourceResult<TsunamiData>> {
   const startTime = Date.now();
-  const ctrl = new AbortController();
-  const timeout = setTimeout(() => ctrl.abort(), 5000);
 
   try {
     const url = 'https://www.tsunami.gov/events/xml/PAAQAtom.xml';
-    const res = await fetch(url, {
-      signal: ctrl.signal,
+    const res = await fetchWithTimeout(url, {
       headers: { 'User-Agent': 'planetary-risk/1.0' },
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -34,16 +32,7 @@ export async function fetchNoaaTsunami(
       latencyMs: Date.now() - startTime,
     };
   } catch (err) {
-    return {
-      sourceId: 'noaa-tsunami',
-      ok: false,
-      fetchedAt: new Date(),
-      data: null,
-      error: String(err),
-      latencyMs: Date.now() - startTime,
-    };
-  } finally {
-    clearTimeout(timeout);
+    return sourceError<TsunamiData>('noaa-tsunami', startTime, err);
   }
 }
 

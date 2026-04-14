@@ -3,6 +3,7 @@ import type {
   Coordinates,
   SourceResult,
 } from '../types/index.js';
+import { sourceError } from './http.js';
 
 const AQI_CATEGORIES: [number, string][] = [
   [50, 'Good'],
@@ -46,14 +47,11 @@ export async function fetchOpenAQ(
   const apiKey = process.env.OPENAQ_API_KEY;
   if (!apiKey) {
     clearTimeout(timeout);
-    return {
-      sourceId: 'openaq',
-      ok: false,
-      fetchedAt: new Date(),
-      data: null,
-      error: 'OPENAQ_API_KEY not set',
-      latencyMs: Date.now() - startTime,
-    };
+    return sourceError<AirQualityData>(
+      'openaq',
+      startTime,
+      'OPENAQ_API_KEY not set',
+    );
   }
 
   try {
@@ -71,14 +69,11 @@ export async function fetchOpenAQ(
 
     const locJson = (await locRes.json()) as { results: OpenAQLocation[] };
     if (!locJson.results || locJson.results.length === 0) {
-      return {
-        sourceId: 'openaq',
-        ok: false,
-        fetchedAt: new Date(),
-        data: null,
-        error: 'No stations within 25 km',
-        latencyMs: Date.now() - startTime,
-      };
+      return sourceError<AirQualityData>(
+        'openaq',
+        startTime,
+        'No stations within 25 km',
+      );
     }
 
     // Prefer the nearest station that has PM2.5 or PM10 sensors
@@ -168,14 +163,7 @@ export async function fetchOpenAQ(
       stationDistanceKm: data.stationDistanceKm,
     };
   } catch (err) {
-    return {
-      sourceId: 'openaq',
-      ok: false,
-      fetchedAt: new Date(),
-      data: null,
-      error: String(err),
-      latencyMs: Date.now() - startTime,
-    };
+    return sourceError<AirQualityData>('openaq', startTime, err);
   } finally {
     clearTimeout(timeout);
   }

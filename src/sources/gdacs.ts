@@ -1,4 +1,5 @@
 import type { Coordinates, SourceResult } from '../types/index.js';
+import { fetchWithTimeout, sourceError } from './http.js';
 
 export interface GdacsEvent {
   eventType: 'EQ' | 'TC' | 'FL' | 'VO';
@@ -52,8 +53,6 @@ export async function fetchGdacs(
   coords: Coordinates,
 ): Promise<SourceResult<GdacsData>> {
   const startTime = Date.now();
-  const ctrl = new AbortController();
-  const timeout = setTimeout(() => ctrl.abort(), 8000);
 
   try {
     // Build ~5° bounding box around the point
@@ -69,7 +68,7 @@ export async function fetchGdacs(
       `?geometryArea=${encodeURIComponent(wkt)}` +
       `&days=4`;
 
-    const res = await fetch(url, { signal: ctrl.signal });
+    const res = await fetchWithTimeout(url, { timeoutMs: 8000 });
 
     // GDACS returns 404 when no events exist in the bounding box
     if (res.status === 404) {
@@ -133,15 +132,6 @@ export async function fetchGdacs(
       latencyMs: Date.now() - startTime,
     };
   } catch (err) {
-    return {
-      sourceId: 'gdacs',
-      ok: false,
-      fetchedAt: new Date(),
-      data: null,
-      error: String(err),
-      latencyMs: Date.now() - startTime,
-    };
-  } finally {
-    clearTimeout(timeout);
+    return sourceError<GdacsData>('gdacs', startTime, err);
   }
 }

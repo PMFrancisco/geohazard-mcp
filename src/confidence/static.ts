@@ -5,25 +5,12 @@ import type {
   Discrepancy,
   SourceResult,
 } from '../types/index.js';
-
-const SOURCE_MAX_AGE_MINUTES: Record<string, number> = {
-  'usgs-earthquake': 5,
-  'nasa-firms': 180,
-  'open-meteo': 60,
-  openaq: 60,
-  'open-meteo-aq': 60,
-  'noaa-nws': 30,
-  'noaa-swpc': 30,
-  glofas: 360,
-  'smithsonian-gvp': 1440,
-  'noaa-tsunami': 15,
-  marine: 720,
-  gdacs: 10,
-};
+import { SOURCES } from '../sources/registry.js';
 
 function getFreshnessScore(result: SourceResult<unknown>): number {
   if (!result.ok) return 0;
-  const maxAgeMin = SOURCE_MAX_AGE_MINUTES[result.sourceId] ?? 60;
+  const maxAgeMin =
+    SOURCES.find((s) => s.id === result.sourceId)?.freshnessMinutes ?? 60;
   const ageMin = (Date.now() - result.fetchedAt.getTime()) / 60000;
 
   if (ageMin <= maxAgeMin) return 1.0 - 0.7 * (ageMin / maxAgeMin);
