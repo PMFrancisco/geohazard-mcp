@@ -97,12 +97,28 @@ export function scoreSeismic(s: SeismicData): number {
 
 export function scoreFire(f: FireData): number {
   let score = 0;
-  if (f.totalHotspots100km > 20) score += 0.6;
-  else if (f.totalHotspots100km > 5) score += 0.35;
-  else if (f.totalHotspots100km > 0) score += 0.15;
-  if (f.totalHotspots500km > 100) score += 0.2;
-  if (f.maxBrightness !== null && f.maxBrightness > 400) score += 0.2;
 
+  // Hotspot counts within 100 km — raise lower thresholds so a handful of
+  // detections (often industrial thermal signatures or agricultural burns)
+  // don't score as elevated risk.
+  if (f.totalHotspots100km > 30) score += 0.5;
+  else if (f.totalHotspots100km > 10) score += 0.25;
+  else if (f.totalHotspots100km > 3) score += 0.1;
+
+  // Regional context: large clusters across 500 km indicate a broader event.
+  if (f.totalHotspots500km > 200) score += 0.2;
+  else if (f.totalHotspots500km > 50) score += 0.1;
+
+  // Brightness as a tiered signal, not binary. Real fires typically peak
+  // above 350K; values below that are likely marginal detections even when
+  // they pass the VIIRS confidence filter.
+  if (f.maxBrightness !== null) {
+    if (f.maxBrightness > 450) score += 0.25;
+    else if (f.maxBrightness > 400) score += 0.15;
+    else if (f.maxBrightness > 350) score += 0.05;
+  }
+
+  // Proximity boost for nearest hotspot.
   if (f.nearestDistanceKm !== null) {
     if (f.nearestDistanceKm < 10) score += 0.3;
     else if (f.nearestDistanceKm < 25) score += 0.15;

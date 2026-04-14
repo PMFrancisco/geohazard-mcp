@@ -66,6 +66,17 @@ export async function fetchNASAFirms(
     const csv = await res.text();
     const rows = parseCSV(csv);
 
+    // VIIRS_SNPP_NRT reports confidence as letter codes (l/n/h), not numeric.
+    // Parsing with parseFloat() silently yields NaN → 0, rendering the field
+    // unusable. Map to a numeric scale so downstream scoring can use it.
+    const viirsConfidence = (raw: string): number => {
+      const c = raw.trim().toLowerCase();
+      if (c === 'h') return 90;
+      if (c === 'n') return 60;
+      if (c === 'l') return 20;
+      return parseFloat(raw) || 0;
+    };
+
     const hotspots: FireHotspot[] = rows.map((r) => {
       const lat = parseFloat(r.latitude);
       const lon = parseFloat(r.longitude);
@@ -74,23 +85,35 @@ export async function fetchNASAFirms(
         lat,
         lon,
         brightness: parseFloat(r.bright_ti4) || 0,
-        confidence: parseFloat(r.confidence) || 0,
+        confidence: viirsConfidence(r.confidence),
         distanceKm: Math.round(distanceKm * 10) / 10,
       };
     });
 
     hotspots.sort((a, b) => a.distanceKm - b.distanceKm);
 
-    const within100 = hotspots.filter((h) => h.distanceKm <= 100);
-    const within500 = hotspots.filter((h) => h.distanceKm <= 500);
-    const brightnesses = hotspots.map((h) => h.brightness);
+    // Drop hotspots south of the Antarctic Convergence (~-60°): thermal
+    // anomalies over Antarctic ice sheets (ice reflections, research-station
+    // geothermal signatures, sensor glitches) are known FIRMS artifacts, not
+    // real fires.
+    // Also drop low-confidence detections (VIIRS 'l' code, ~20) — these are
+    // flagged by the VIIRS algorithm as likely false alarms (cold pixels,
+    // edge effects, industrial thermal pollution).
+    const filteredHotspots = hotspots.filter(
+      (h) => h.lat >= -60 && h.confidence >= 30,
+    );
+
+    const within100 = filteredHotspots.filter((h) => h.distanceKm <= 100);
+    const within500 = filteredHotspots.filter((h) => h.distanceKm <= 500);
+    const brightnesses = filteredHotspots.map((h) => h.brightness);
 
     const data: FireData = {
-      hotspotsNearby: hotspots.slice(0, 50), // cap response size
+      hotspotsNearby: filteredHotspots.slice(0, 50), // cap response size
       totalHotspots100km: within100.length,
       totalHotspots500km: within500.length,
       maxBrightness: brightnesses.length > 0 ? Math.max(...brightnesses) : null,
-      nearestDistanceKm: hotspots.length > 0 ? hotspots[0].distanceKm : null,
+      nearestDistanceKm:
+        filteredHotspots.length > 0 ? filteredHotspots[0].distanceKm : null,
     };
 
     return {

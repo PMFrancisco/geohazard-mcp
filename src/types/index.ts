@@ -219,6 +219,7 @@ export interface ConfidenceScore {
     sourceRatio: number;
     freshnessAvg: number;
     geoFactor: number;
+    discrepancyFactor: number;
   };
   sourceDetails: Record<string, { fresh: number; ok: boolean }>;
 }
@@ -271,6 +272,7 @@ export interface Discrepancy {
   valueB: number;
   delta: number;
   relativeDelta: number;
+  expected?: boolean;
 }
 
 export interface AggregatorOptions {

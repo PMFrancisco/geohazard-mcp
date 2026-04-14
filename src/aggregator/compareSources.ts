@@ -43,6 +43,8 @@ export function detectDiscrepancies(
           Math.max(Math.abs(a.value), Math.abs(b.value)) /
           Math.min(Math.abs(a.value), Math.abs(b.value));
         if (relativeDelta > 5 && ratio < 100) {
+          const pair = new Set([a.sourceId, b.sourceId]);
+          const expected = pair.has('openaq') && pair.has('open-meteo-aq');
           const disc: Discrepancy = {
             id: randomUUID(),
             timestampUtc: new Date().toISOString(),
@@ -54,6 +56,7 @@ export function detectDiscrepancies(
             valueB: b.value,
             delta,
             relativeDelta: Math.round(relativeDelta * 10) / 10,
+            ...(expected ? { expected: true } : {}),
           };
           discrepancies.push(disc);
 

@@ -110,7 +110,11 @@ export function calculateConfidence(
   const geoFactor = getGeoFactor(coords, results);
 
   // Penalise confidence when sources strongly disagree (>20% relative delta)
-  const severeCount = discrepancies.filter((d) => d.relativeDelta > 20).length;
+  // Exclude discrepancies tagged as expected (e.g., known blend pair differences)
+  const severeCount = discrepancies.filter(
+    (d) =>
+      d.relativeDelta > 20 && (d as { expected?: boolean }).expected !== true,
+  ).length;
   const discrepancyFactor = Math.max(0.5, 1.0 - 0.1 * severeCount);
 
   const overall = sourceRatio * freshnessAvg * geoFactor * discrepancyFactor;
@@ -129,6 +133,7 @@ export function calculateConfidence(
       sourceRatio: Math.round(sourceRatio * 1000) / 1000,
       freshnessAvg: Math.round(freshnessAvg * 1000) / 1000,
       geoFactor: Math.round(geoFactor * 1000) / 1000,
+      discrepancyFactor: Math.round(discrepancyFactor * 1000) / 1000,
     },
     sourceDetails,
   };

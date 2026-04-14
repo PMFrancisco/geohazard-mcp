@@ -336,8 +336,11 @@ function baselineFireScore(c: AggregatedConditions): number {
 }
 
 function baselineVolcanicScore(c: AggregatedConditions): number {
-  if (!c.volcanic) return 0;
-  return c.volcanic.recentActivity.length > 0 ? 0.3 : 0;
+  // Reuse the real-time layer score, which already applies distance-based
+  // proximity via scoreVolcanic (>500 km → 0). The prior implementation
+  // ignored distance and returned 0.3 whenever any elevated volcano existed
+  // anywhere on Earth, polluting every continent's forecast.
+  return c.risk.layerScores.volcanic ?? 0;
 }
 
 // ── Main entry ──────────────────────────────────────────────
