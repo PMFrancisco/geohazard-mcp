@@ -10,6 +10,7 @@ import { calculateConfidence } from '../confidence/static.js';
 import { calculateRisk } from './riskScore.js';
 import { detectDiscrepancies } from './compareSources.js';
 import { logSourceCall } from '../logger/discrepancy.js';
+import { computeUsAqi } from '../sources/aqi.js';
 
 /** Fetch all sources in parallel and log each call. Returns the flat result array. */
 export async function fetchAllSources(
@@ -53,19 +54,51 @@ function mergeAirQuality(
   const blend = (a: number, b: number) =>
     Math.round(a * oaqWeight + b * maqWeight);
 
+  const blendedPm25 = blend(oaq.pm25, maq.pm25);
+  const blendedPm10 = blend(oaq.pm10, maq.pm10);
+  const blendedNo2 = blend(oaq.no2, maq.no2);
+  const blendedO3 = blend(oaq.o3, maq.o3);
+  const blendedCo =
+    oaq.co != null || maq.co != null
+      ? blend(oaq.co ?? maq.co!, maq.co ?? oaq.co!)
+      : undefined;
+
+  // Union semantics: if either source flags a pollutant exceedance, surface
+  // it. A threshold signal should err toward caution — blending two sources
+  // that both flag PM2.5 into a single value that doesn't flag it loses
+  // information.
+  const whoExceedances = [
+    ...new Set([...oaq.whoExceedances, ...maq.whoExceedances]),
+  ].sort();
+
+  // Derive aqi/category/dominantPollutant from the blended pollutant values
+  // so the merged AQI is consistent with the merged concentrations. (Previously
+  // these fields were taken verbatim from OpenAQ, which could disagree with the
+  // blended pm25/pm10/no2/o3/co numbers.)
+  const {
+    aqi: mergedAqi,
+    category: mergedCategory,
+    dominantPollutant: mergedDominant,
+  } = computeUsAqi({
+    pm25: blendedPm25,
+    pm10: blendedPm10,
+    o3: blendedO3,
+    no2: blendedNo2,
+    ...(blendedCo != null ? { co: blendedCo } : {}),
+  });
+
   return {
-    aqi: blend(oaq.aqi, maq.aqi),
-    pm25: blend(oaq.pm25, maq.pm25),
-    pm10: blend(oaq.pm10, maq.pm10),
-    no2: blend(oaq.no2, maq.no2),
-    o3: blend(oaq.o3, maq.o3),
-    ...(oaq.co != null || maq.co != null
-      ? { co: blend(oaq.co ?? maq.co!, maq.co ?? oaq.co!) }
-      : {}),
-    category: oaq.category,
-    dominantPollutant: oaq.dominantPollutant,
+    aqi: mergedAqi,
+    pm25: blendedPm25,
+    pm10: blendedPm10,
+    no2: blendedNo2,
+    o3: blendedO3,
+    ...(blendedCo != null ? { co: blendedCo } : {}),
+    category: mergedCategory,
+    dominantPollutant: mergedDominant,
     source: 'openaq',
     stationDistanceKm: oaq.stationDistanceKm,
+    whoExceedances,
   };
 }
 
@@ -91,7 +124,7 @@ export async function getConditions(
   conditions.airQuality = airQuality;
 
   const discrepancies = detectDiscrepancies(coords, all);
-  const confidence = calculateConfidence(all, coords, discrepancies);
+  const confidence = calculateConfidence(all, coords);
   const risk = calculateRisk(conditions, airQuality);
 
   return {
@@ -112,5 +145,6 @@ export async function getConditions(
     gdacs: conditions.gdacs ?? null,
     confidence,
     risk,
+    discrepancies,
   };
 }

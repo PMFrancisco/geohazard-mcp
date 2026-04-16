@@ -4,22 +4,7 @@ import type {
   SourceResult,
 } from '../types/index.js';
 import { sourceError } from './http.js';
-
-const AQI_CATEGORIES: [number, string][] = [
-  [50, 'Good'],
-  [100, 'Moderate'],
-  [150, 'Unhealthy for Sensitive Groups'],
-  [200, 'Unhealthy'],
-  [300, 'Very Unhealthy'],
-  [Infinity, 'Hazardous'],
-];
-
-function aqiCategory(aqi: number): string {
-  for (const [max, label] of AQI_CATEGORIES) {
-    if (aqi <= max) return label;
-  }
-  return 'Hazardous';
-}
+import { computeUsAqi } from './aqi.js';
 
 interface OpenAQLocation {
   id: number;
@@ -130,16 +115,16 @@ export async function fetchOpenAQ(
     const o3 = vals['o3'] ?? 0;
     const co = vals['co'];
 
-    // Approximate AQI from PM2.5 (simplified EPA linear)
-    const aqi = Math.round(pm25 * 2.04);
-    const dominant =
-      pm25 >= pm10 && pm25 >= no2 && pm25 >= o3
-        ? 'pm25'
-        : pm10 >= no2 && pm10 >= o3
-          ? 'pm10'
-          : no2 >= o3
-            ? 'no2'
-            : 'o3';
+    // All values are µg/m³ at this point (the ppm→µg/m³ conversion above
+    // normalizes OpenAQ's native ppm readings). computeUsAqi handles the
+    // µg/m³→ppb/ppm conversion internally per EPA breakpoint definitions.
+    const { aqi, category, dominantPollutant, whoExceedances } = computeUsAqi({
+      pm25,
+      pm10,
+      o3,
+      no2,
+      ...(co != null ? { co } : {}),
+    });
 
     const data: AirQualityData = {
       aqi,
@@ -148,10 +133,11 @@ export async function fetchOpenAQ(
       no2,
       o3,
       ...(co != null ? { co } : {}),
-      category: aqiCategory(aqi),
-      dominantPollutant: dominant,
+      category,
+      dominantPollutant,
       source: 'openaq',
       stationDistanceKm: Math.round(distKm * 10) / 10,
+      whoExceedances,
     };
 
     return {

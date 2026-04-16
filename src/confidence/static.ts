@@ -2,139 +2,99 @@ import type {
   ConfidenceLevel,
   ConfidenceScore,
   Coordinates,
-  Discrepancy,
   SourceResult,
 } from '../types/index.js';
 import { SOURCES } from '../sources/registry.js';
 
-function getFreshnessScore(result: SourceResult<unknown>): number {
-  if (!result.ok) return 0;
-  const maxAgeMin =
-    SOURCES.find((s) => s.id === result.sourceId)?.freshnessMinutes ?? 60;
-  const ageMin = (Date.now() - result.fetchedAt.getTime()) / 60000;
-
-  if (ageMin <= maxAgeMin) return 1.0 - 0.7 * (ageMin / maxAgeMin);
-  const overRatio = (ageMin - maxAgeMin) / maxAgeMin;
-  return Math.max(0, 0.3 - 0.3 * overRatio);
-}
-
-// Base factor from regional monitoring density (narrowed range: 0.7–1.0)
-function getBaseGeoFactor(coords: Coordinates): number {
-  const { lat, lon } = coords;
-  const absLat = Math.abs(lat);
-
-  // Open oceans / Polar regions
-  if (absLat > 66) return 0.7;
-
-  // North America
-  if (lat >= 25 && lat <= 50 && lon >= -130 && lon <= -60) return 1.0;
-  // Western Europe
-  if (lat >= 35 && lat <= 60 && lon >= -10 && lon <= 30) return 1.0;
-  // Japan
-  if (lat >= 30 && lat <= 46 && lon >= 129 && lon <= 146) return 0.95;
-  // Australia
-  if (lat >= -44 && lat <= -10 && lon >= 112 && lon <= 154) return 0.95;
-  // South Korea
-  if (lat >= 33 && lat <= 39 && lon >= 124 && lon <= 130) return 0.95;
-  // Coastal South America
-  if (lat >= -56 && lat <= 12 && lon >= -82 && lon <= -34) return 0.85;
-  // Middle East / North Africa
-  if (lat >= 15 && lat <= 40 && lon >= -17 && lon <= 60) return 0.8;
-  // Central Asia
-  if (lat >= 30 && lat <= 55 && lon >= 60 && lon <= 90) return 0.8;
-  // Sub-Saharan Africa
-  if (lat >= -35 && lat <= 15 && lon >= -17 && lon <= 52) return 0.75;
-
-  // Default / open ocean
-  return 0.7;
-}
-
-// Adjust geo-factor based on empirical evidence from source results
-function getGeoFactor(
-  coords: Coordinates,
-  results: SourceResult<unknown>[],
-): number {
-  const base = getBaseGeoFactor(coords);
-
-  // Collect station distances from sources that report them
-  const distances = results
-    .filter((r) => r.ok && r.stationDistanceKm != null)
-    .map((r) => r.stationDistanceKm!);
-
-  if (distances.length === 0) return base;
-
-  // Empirical adjustment: nearby stations → boost toward 1.0, distant → pull toward 0.5
-  const avgDist = distances.reduce((a, b) => a + b, 0) / distances.length;
-  let empirical: number;
-  if (avgDist < 10) empirical = 1.0;
-  else if (avgDist < 25) empirical = 0.9;
-  else if (avgDist < 50) empirical = 0.8;
-  else if (avgDist < 100) empirical = 0.65;
-  else empirical = 0.5;
-
-  // Blend: 60% regional base, 40% empirical evidence
-  return base * 0.6 + empirical * 0.4;
-}
+/**
+ * Multiplier on a source's declared `freshnessMinutes` beyond which its result
+ * is considered stale and counted as a failure.
+ */
+const STALE_MULTIPLIER = 2;
 
 function getLevel(overall: number): {
   level: ConfidenceLevel;
   label: string;
 } {
-  if (overall >= 0.85) return { level: 'reliable', label: 'Reliable data' };
-  if (overall >= 0.65) return { level: 'partial', label: 'Partial data' };
+  if (overall >= 0.8) return { level: 'reliable', label: 'Reliable data' };
+  if (overall >= 0.6) return { level: 'partial', label: 'Partial data' };
   if (overall >= 0.4) return { level: 'limited', label: 'Limited coverage' };
   return { level: 'estimate', label: 'Rough estimate' };
 }
 
+/**
+ * Confidence = fraction of location-applicable sources that returned fresh ok data.
+ *
+ *   overall = okCount / applicableCount
+ *
+ * Sources that don't apply to the query location (e.g., NOAA NWS outside the US)
+ * are excluded from both numerator and denominator so geography doesn't penalise
+ * the score. A source is "ok" only if `ok === true` AND its data is not stale
+ * (age ≤ `STALE_MULTIPLIER × freshnessMinutes`).
+ */
 export function calculateConfidence(
   results: SourceResult<unknown>[],
   coords: Coordinates,
-  discrepancies: Discrepancy[] = [],
 ): ConfidenceScore {
-  const total = results.length;
-  const okCount = results.filter((r) => r.ok).length;
-  const sourceRatio = total > 0 ? okCount / total : 0;
-
-  const freshnessScores = results.map((r) => ({
-    sourceId: r.sourceId,
-    fresh: getFreshnessScore(r),
-    ok: r.ok,
-  }));
-
-  const freshValues = freshnessScores.filter((f) => f.ok).map((f) => f.fresh);
-  const freshnessAvg =
-    freshValues.length > 0
-      ? freshValues.reduce((a, b) => a + b, 0) / freshValues.length
-      : 0;
-
-  const geoFactor = getGeoFactor(coords, results);
-
-  // Penalise confidence when sources strongly disagree (>20% relative delta)
-  // Exclude discrepancies tagged as expected (e.g., known blend pair differences)
-  const severeCount = discrepancies.filter(
-    (d) =>
-      d.relativeDelta > 20 && (d as { expected?: boolean }).expected !== true,
-  ).length;
-  const discrepancyFactor = Math.max(0.5, 1.0 - 0.1 * severeCount);
-
-  const overall = sourceRatio * freshnessAvg * geoFactor * discrepancyFactor;
-  const { level, label } = getLevel(overall);
-
-  const sourceDetails: Record<string, { fresh: number; ok: boolean }> = {};
-  for (const f of freshnessScores) {
-    sourceDetails[f.sourceId] = { fresh: f.fresh, ok: f.ok };
+  const freshnessById = new Map<string, number>();
+  const applicabilityById = new Map<string, boolean>();
+  for (const s of SOURCES) {
+    freshnessById.set(s.id, s.freshnessMinutes);
+    applicabilityById.set(s.id, s.appliesTo(coords));
   }
+
+  const applicableSources: string[] = [];
+  const okSources: string[] = [];
+  const failedSources: string[] = [];
+  const notApplicableSources: string[] = [];
+
+  const now = Date.now();
+  for (const r of results) {
+    const applies = applicabilityById.get(r.sourceId) ?? true;
+    if (!applies) {
+      notApplicableSources.push(r.sourceId);
+      continue;
+    }
+    applicableSources.push(r.sourceId);
+
+    if (!r.ok) {
+      failedSources.push(r.sourceId);
+      continue;
+    }
+
+    const maxAgeMin = freshnessById.get(r.sourceId) ?? 60;
+    const ageMin = (now - r.fetchedAt.getTime()) / 60000;
+    if (ageMin > STALE_MULTIPLIER * maxAgeMin) {
+      failedSources.push(r.sourceId);
+      continue;
+    }
+
+    okSources.push(r.sourceId);
+  }
+
+  const applicableCount = applicableSources.length;
+  if (applicableCount === 0) {
+    return {
+      overall: 0,
+      level: 'estimate',
+      label: 'Rough estimate',
+      applicableSources,
+      okSources,
+      failedSources,
+      notApplicableSources,
+    };
+  }
+
+  const overall = okSources.length / applicableCount;
+  const { level, label } = getLevel(overall);
 
   return {
     overall: Math.round(overall * 1000) / 1000,
     level,
     label,
-    factors: {
-      sourceRatio: Math.round(sourceRatio * 1000) / 1000,
-      freshnessAvg: Math.round(freshnessAvg * 1000) / 1000,
-      geoFactor: Math.round(geoFactor * 1000) / 1000,
-      discrepancyFactor: Math.round(discrepancyFactor * 1000) / 1000,
-    },
-    sourceDetails,
+    applicableSources,
+    okSources,
+    failedSources,
+    notApplicableSources,
   };
 }

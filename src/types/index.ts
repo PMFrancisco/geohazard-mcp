@@ -69,6 +69,11 @@ export interface AirQualityData {
   source: 'openaq' | 'open-meteo-aq';
   /** Distance to nearest station (OpenAQ only) */
   stationDistanceKm?: number;
+  /**
+   * Pollutant keys whose current value exceeds the WHO 2021 24-hr guideline.
+   * Subset of {'pm25','pm10','no2','o3','co'}. Empty array when nothing exceeds.
+   */
+  whoExceedances: string[];
 }
 
 export interface FloodData {
@@ -215,13 +220,14 @@ export interface ConfidenceScore {
   overall: number;
   level: ConfidenceLevel;
   label: string;
-  factors: {
-    sourceRatio: number;
-    freshnessAvg: number;
-    geoFactor: number;
-    discrepancyFactor: number;
-  };
-  sourceDetails: Record<string, { fresh: number; ok: boolean }>;
+  /** Source ids whose scope includes this location */
+  applicableSources: string[];
+  /** Subset of applicable sources that returned ok data within freshness tolerance */
+  okSources: string[];
+  /** Applicable sources that either failed or returned stale data */
+  failedSources: string[];
+  /** Sources excluded from the ratio because they don't apply at this location */
+  notApplicableSources: string[];
 }
 
 export type RiskLevel = 'minimal' | 'low' | 'moderate' | 'high' | 'critical';
@@ -259,6 +265,7 @@ export interface AggregatedConditions {
   gdacs: import('../sources/gdacs.js').GdacsData | null;
   confidence: ConfidenceScore;
   risk: RiskAssessment;
+  discrepancies: Discrepancy[];
 }
 
 export interface Discrepancy {

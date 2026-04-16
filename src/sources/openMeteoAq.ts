@@ -4,22 +4,7 @@ import type {
   SourceResult,
 } from '../types/index.js';
 import { fetchWithTimeout, sourceError } from './http.js';
-
-const AQI_CATEGORIES: [number, string][] = [
-  [50, 'Good'],
-  [100, 'Moderate'],
-  [150, 'Unhealthy for Sensitive Groups'],
-  [200, 'Unhealthy'],
-  [300, 'Very Unhealthy'],
-  [Infinity, 'Hazardous'],
-];
-
-function aqiCategory(aqi: number): string {
-  for (const [max, label] of AQI_CATEGORIES) {
-    if (aqi <= max) return label;
-  }
-  return 'Hazardous';
-}
+import { computeUsAqi } from './aqi.js';
 
 export async function fetchOpenMeteoAq(
   coords: Coordinates,
@@ -27,10 +12,13 @@ export async function fetchOpenMeteoAq(
   const startTime = Date.now();
 
   try {
+    // Query raw µg/m³ fields only — we compute US EPA AQI ourselves so both
+    // AQ sources emit the same scale (the native european_aqi uses a 0–100+
+    // band system that is not comparable with OpenAQ's US-style output).
     const url =
       `https://air-quality-api.open-meteo.com/v1/air-quality` +
       `?latitude=${coords.lat}&longitude=${coords.lon}` +
-      `&current=pm2_5,pm10,nitrogen_dioxide,ozone,carbon_monoxide,european_aqi`;
+      `&current=pm2_5,pm10,nitrogen_dioxide,ozone,carbon_monoxide`;
 
     const res = await fetchWithTimeout(url);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -45,16 +33,14 @@ export async function fetchOpenMeteoAq(
     const no2 = c.nitrogen_dioxide ?? 0;
     const o3 = c.ozone ?? 0;
     const co = c.carbon_monoxide;
-    const aqi = c.european_aqi ?? Math.round(pm25 * 2.04);
 
-    const dominant =
-      pm25 >= pm10 && pm25 >= no2 && pm25 >= o3
-        ? 'pm25'
-        : pm10 >= no2 && pm10 >= o3
-          ? 'pm10'
-          : no2 >= o3
-            ? 'no2'
-            : 'o3';
+    const { aqi, category, dominantPollutant, whoExceedances } = computeUsAqi({
+      pm25,
+      pm10,
+      o3,
+      no2,
+      ...(co != null ? { co } : {}),
+    });
 
     const data: AirQualityData = {
       aqi,
@@ -63,9 +49,10 @@ export async function fetchOpenMeteoAq(
       no2,
       o3,
       ...(co != null ? { co } : {}),
-      category: aqiCategory(aqi),
-      dominantPollutant: dominant,
+      category,
+      dominantPollutant,
       source: 'open-meteo-aq',
+      whoExceedances,
     };
 
     return {
