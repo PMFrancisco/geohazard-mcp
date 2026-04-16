@@ -1,8 +1,44 @@
 {
   "name": "geohazard-mcp",
   "version": "0.1.0",
-  "private": true,
+  "description": "MCP server aggregating real-time environmental and natural-hazard data from 12 public sources into a unified risk assessment.",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "geohazard",
+    "weather",
+    "earthquake",
+    "wildfire",
+    "flood",
+    "risk",
+    "claude",
+    "anthropic",
+    "openai",
+    "chatgpt",
+    "gemini",
+    "ai"
+  ],
+  "author": "Francisco Pérez Muñoz",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/PMFrancisco/geohazard-mcp.git"
+  },
+  "homepage": "https://github.com/PMFrancisco/geohazard-mcp#readme",
+  "bugs": {
+    "url": "https://github.com/PMFrancisco/geohazard-mcp/issues"
+  },
   "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "geohazard-mcp": "dist/server/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "packageManager": "pnpm@10.24.0",
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -15,7 +51,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "prepare": "husky"
+    "prepare": "husky",
+    "prepublishOnly": "pnpm build"
   },
   "lint-staged": {
     "*.{ts,js}": [
