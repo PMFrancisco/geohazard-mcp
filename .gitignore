@@ -6,3 +6,8 @@ logs/*
 *.log
 .DS_Store
 Thumbs.db
+
+# Local dev scripts and tool output dumps
+scripts/
+.out-*.json
+.tool-out.json
