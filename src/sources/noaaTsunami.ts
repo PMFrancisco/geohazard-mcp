@@ -14,7 +14,7 @@ export async function fetchNoaaTsunami(
   try {
     const url = 'https://www.tsunami.gov/events/xml/PAAQAtom.xml';
     const res = await fetchWithTimeout(url, {
-      headers: { 'User-Agent': 'geohazard/1.0' },
+      headers: { 'User-Agent': 'geohazard-mcp/1.0' },
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
