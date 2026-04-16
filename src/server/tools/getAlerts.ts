@@ -43,7 +43,7 @@ export const getAlertsTool = {
         alerts.push({
           type: 'fire',
           severity: data.fire.totalHotspots100km >= 10 ? 'high' : 'moderate',
-          description: `${data.fire.totalHotspots100km} fire hotspot(s) within 100 km`,
+          description: `${data.fire.totalHotspots100km} fire hotspot(s) within 100 km (may include prescribed or hazard-reduction burns)`,
         });
       }
     }

@@ -12,6 +12,9 @@
     "format:check": "prettier --check src/",
     "dev": "tsx src/index.ts",
     "dev:server": "MCP_TRANSPORT=http tsx src/server/index.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
     "prepare": "husky"
   },
   "lint-staged": {
@@ -34,15 +37,19 @@
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/node": "^25.6.0",
+    "@types/supertest": "^7.2.0",
+    "@vitest/coverage-v8": "^4.1.4",
     "dotenv": "^17.4.2",
     "eslint": "^10.2.0",
     "eslint-config-prettier": "^10.1.8",
     "husky": "^9.1.7",
     "lint-staged": "^16.4.0",
     "prettier": "^3.8.2",
+    "supertest": "^7.2.2",
     "tsx": "^4.21.0",
     "typescript": "^5.8.0",
-    "typescript-eslint": "^8.58.1"
+    "typescript-eslint": "^8.58.1",
+    "vitest": "^4.1.4"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
