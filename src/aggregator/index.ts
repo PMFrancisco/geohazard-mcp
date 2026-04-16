@@ -2,15 +2,52 @@ import type {
   AggregatedConditions,
   AggregatorOptions,
   AirQualityData,
+  ConfigHint,
   Coordinates,
   SourceResult,
 } from '../types/index.js';
 import { SOURCES, type DirectSource } from '../sources/registry.js';
-import { calculateConfidence } from '../confidence/static.js';
+import {
+  calculateConfidence,
+  countApplicableSources,
+} from '../confidence/static.js';
 import { calculateRisk } from './riskScore.js';
 import { detectDiscrepancies } from './compareSources.js';
 import { logSourceCall } from '../logger/discrepancy.js';
 import { computeUsAqi } from '../sources/aqi.js';
+
+const SETUP_URLS: Record<string, string> = {
+  OPENAQ_API_KEY: 'https://docs.openaq.org/using-the-api/api-key',
+  NASA_FIRMS_KEY: 'https://firms.modaps.eosdis.nasa.gov/api/map_key/',
+};
+
+export function buildConfigHints(
+  results: SourceResult<unknown>[],
+  coords: Coordinates,
+): ConfigHint[] {
+  const applicable = countApplicableSources(coords);
+  const impact =
+    applicable > 0 ? Math.round((1 / applicable) * 1000) / 1000 : 0;
+  const hints: ConfigHint[] = [];
+  for (const r of results) {
+    if (!r.reason || !r.envVar) continue;
+    const url = SETUP_URLS[r.envVar];
+    const message =
+      r.reason === 'missing_api_key'
+        ? `Set ${r.envVar} to include ${r.sourceId} data (raises confidence by up to ${impact.toFixed(2)}).` +
+          (url ? ` Get a free key at ${url}` : '')
+        : `${r.envVar} is set but was rejected by the ${r.sourceId} API. Verify the key is active.` +
+          (url ? ` Manage keys at ${url}` : '');
+    hints.push({
+      sourceId: r.sourceId,
+      envVar: r.envVar,
+      reason: r.reason,
+      message,
+      confidenceImpact: impact,
+    });
+  }
+  return hints;
+}
 
 /** Fetch all sources in parallel and log each call. Returns the flat result array. */
 export async function fetchAllSources(
@@ -126,6 +163,7 @@ export async function getConditions(
   const discrepancies = detectDiscrepancies(coords, all);
   const confidence = calculateConfidence(all, coords);
   const risk = calculateRisk(conditions, airQuality);
+  const configHints = buildConfigHints(all, coords);
 
   return {
     location: coords,
@@ -146,5 +184,6 @@ export async function getConditions(
     confidence,
     risk,
     discrepancies,
+    configHints,
   };
 }

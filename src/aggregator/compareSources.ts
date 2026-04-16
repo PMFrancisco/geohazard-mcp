@@ -110,6 +110,8 @@ export async function compareSources(params: {
       data: r.data,
       latencyMs: r.latencyMs,
       ...(r.error ? { error: r.error } : {}),
+      ...(r.reason ? { reason: r.reason } : {}),
+      ...(r.envVar ? { envVar: r.envVar } : {}),
     };
   }
 

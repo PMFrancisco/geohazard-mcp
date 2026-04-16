@@ -36,6 +36,7 @@ export async function fetchOpenAQ(
       'openaq',
       startTime,
       'OPENAQ_API_KEY not set',
+      { reason: 'missing_api_key', envVar: 'OPENAQ_API_KEY' },
     );
   }
 
@@ -50,6 +51,14 @@ export async function fetchOpenAQ(
       `&limit=10`;
 
     const locRes = await fetch(locUrl, { signal: ctrl.signal, headers });
+    if (locRes.status === 401 || locRes.status === 403) {
+      return sourceError<AirQualityData>(
+        'openaq',
+        startTime,
+        `OPENAQ_API_KEY rejected (HTTP ${locRes.status})`,
+        { reason: 'invalid_api_key', envVar: 'OPENAQ_API_KEY' },
+      );
+    }
     if (!locRes.ok) throw new Error(`Locations HTTP ${locRes.status}`);
 
     const locJson = (await locRes.json()) as { results: OpenAQLocation[] };
@@ -90,6 +99,14 @@ export async function fetchOpenAQ(
     // Step 2: Get latest measurements
     const latestUrl = `https://api.openaq.org/v3/locations/${loc.id}/latest`;
     const latestRes = await fetch(latestUrl, { signal: ctrl.signal, headers });
+    if (latestRes.status === 401 || latestRes.status === 403) {
+      return sourceError<AirQualityData>(
+        'openaq',
+        startTime,
+        `OPENAQ_API_KEY rejected (HTTP ${latestRes.status})`,
+        { reason: 'invalid_api_key', envVar: 'OPENAQ_API_KEY' },
+      );
+    }
     if (!latestRes.ok) throw new Error(`Latest HTTP ${latestRes.status}`);
 
     const latestJson = (await latestRes.json()) as {

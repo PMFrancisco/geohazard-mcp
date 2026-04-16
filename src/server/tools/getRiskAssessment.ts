@@ -27,6 +27,7 @@ export const getRiskAssessmentTool = {
       confidence: data.confidence,
       sourcesQueried: data.sourcesQueried,
       sourcesFailed: data.sourcesFailed,
+      configHints: data.configHints,
     };
   },
 };

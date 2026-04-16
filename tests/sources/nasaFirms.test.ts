@@ -52,11 +52,41 @@ describe('fetchNASAFirms', () => {
     const r = await fetchNASAFirms({ lat: 40, lon: -3 });
     expect(r.ok).toBe(false);
     expect(r.error).toMatch(/NASA_FIRMS_KEY/);
+    expect(r.reason).toBe('missing_api_key');
+    expect(r.envVar).toBe('NASA_FIRMS_KEY');
+  });
+
+  it('tags HTTP 403 as invalid_api_key', async () => {
+    stubFetchStatus(403);
+    const r = await fetchNASAFirms({ lat: 40, lon: -3 });
+    expect(r.ok).toBe(false);
+    expect(r.reason).toBe('invalid_api_key');
+    expect(r.envVar).toBe('NASA_FIRMS_KEY');
+  });
+
+  it('tags "Invalid MAP_KEY" response body as invalid_api_key', async () => {
+    stubFetchOnce('Invalid MAP_KEY.');
+    const r = await fetchNASAFirms({ lat: 40, lon: -3 });
+    expect(r.ok).toBe(false);
+    expect(r.reason).toBe('invalid_api_key');
+    expect(r.envVar).toBe('NASA_FIRMS_KEY');
+  });
+
+  it('tags HTTP 400 + "Invalid MAP_KEY" body as invalid_api_key (real FIRMS behavior)', async () => {
+    stubFetchOnce('Invalid MAP_KEY.', {
+      status: 400,
+      statusText: 'Bad Request',
+    });
+    const r = await fetchNASAFirms({ lat: 40, lon: -3 });
+    expect(r.ok).toBe(false);
+    expect(r.reason).toBe('invalid_api_key');
+    expect(r.envVar).toBe('NASA_FIRMS_KEY');
   });
 
   it('returns ok=false on HTTP error', async () => {
     stubFetchStatus(500);
     const r = await fetchNASAFirms({ lat: 40, lon: -3 });
     expect(r.ok).toBe(false);
+    expect(r.reason).toBeUndefined();
   });
 });

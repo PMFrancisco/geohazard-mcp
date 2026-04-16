@@ -72,6 +72,7 @@ export const getAlertsTool = {
       alerts,
       sourcesQueried: data.sourcesQueried,
       sourcesFailed: data.sourcesFailed,
+      configHints: data.configHints,
     };
   },
 };

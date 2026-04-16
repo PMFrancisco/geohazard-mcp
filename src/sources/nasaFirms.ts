@@ -42,14 +42,17 @@ export async function fetchNASAFirms(
 ): Promise<SourceResult<FireData>> {
   const startTime = Date.now();
 
-  try {
-    const key = firmsKey ?? process.env.NASA_FIRMS_KEY;
-    if (!key) {
-      throw new Error(
-        'NASA_FIRMS_KEY not set — get a free key at https://firms.modaps.eosdis.nasa.gov/api/map_key/',
-      );
-    }
+  const key = firmsKey ?? process.env.NASA_FIRMS_KEY;
+  if (!key) {
+    return sourceError<FireData>(
+      'nasa-firms',
+      startTime,
+      'NASA_FIRMS_KEY not set — get a free key at https://firms.modaps.eosdis.nasa.gov/api/map_key/',
+      { reason: 'missing_api_key', envVar: 'NASA_FIRMS_KEY' },
+    );
+  }
 
+  try {
     // ±2° bounding box ≈ 220km
     const west = coords.lon - 2;
     const east = coords.lon + 2;
@@ -61,10 +64,25 @@ export async function fetchNASAFirms(
       `/VIIRS_SNPP_NRT/${west},${south},${east},${north}/1`;
 
     const res = await fetchWithTimeout(url, { timeoutMs: 8000 });
+    // FIRMS returns HTTP 400 with body "Invalid MAP_KEY." for bad keys
+    // (and 401/403 for other auth failures). Read the body first so we can
+    // distinguish a key-rejection from transient HTTP errors before throwing.
+    const body = await res.text();
+    const invalidKey =
+      res.status === 401 ||
+      res.status === 403 ||
+      /^\s*invalid\b.*map[_ ]?key/i.test(body);
+    if (invalidKey) {
+      return sourceError<FireData>(
+        'nasa-firms',
+        startTime,
+        `NASA_FIRMS_KEY rejected (HTTP ${res.status})`,
+        { reason: 'invalid_api_key', envVar: 'NASA_FIRMS_KEY' },
+      );
+    }
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-    const csv = await res.text();
-    const rows = parseCSV(csv);
+    const rows = parseCSV(body);
 
     // VIIRS_SNPP_NRT reports confidence as letter codes (l/n/h), not numeric.
     // Parsing with parseFloat() silently yields NaN → 0, rendering the field

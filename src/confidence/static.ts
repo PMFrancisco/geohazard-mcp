@@ -12,6 +12,17 @@ import { SOURCES } from '../sources/registry.js';
  */
 const STALE_MULTIPLIER = 2;
 
+/**
+ * Count sources whose scope includes this location — i.e., the denominator
+ * used by `calculateConfidence`. Exposed so callers (e.g., configHints) can
+ * compute each source's proportional contribution to the overall score.
+ */
+export function countApplicableSources(coords: Coordinates): number {
+  let n = 0;
+  for (const s of SOURCES) if (s.appliesTo(coords)) n++;
+  return n;
+}
+
 function getLevel(overall: number): {
   level: ConfidenceLevel;
   label: string;

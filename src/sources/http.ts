@@ -1,4 +1,4 @@
-import type { SourceResult } from '../types/index.js';
+import type { SourceErrorReason, SourceResult } from '../types/index.js';
 
 export async function fetchWithTimeout(
   url: string,
@@ -18,6 +18,7 @@ export function sourceError<T>(
   sourceId: string,
   startedAt: number,
   err: unknown,
+  opts: { reason?: SourceErrorReason; envVar?: string } = {},
 ): SourceResult<T> {
   return {
     sourceId,
@@ -25,6 +26,8 @@ export function sourceError<T>(
     fetchedAt: new Date(),
     data: null,
     error: String(err),
+    ...(opts.reason ? { reason: opts.reason } : {}),
+    ...(opts.envVar ? { envVar: opts.envVar } : {}),
     latencyMs: Date.now() - startedAt,
   };
 }

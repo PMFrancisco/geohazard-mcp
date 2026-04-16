@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fetchOpenAQ } from '../../src/sources/openAQ.js';
-import { stubFetchSequence, stubFetchOnce } from './_helpers.js';
+import {
+  stubFetchSequence,
+  stubFetchOnce,
+  stubFetchStatus,
+} from './_helpers.js';
 
 const ORIGINAL_KEY = process.env.OPENAQ_API_KEY;
 
@@ -76,5 +80,15 @@ describe('fetchOpenAQ', () => {
     const r = await fetchOpenAQ({ lat: 40, lon: -3 });
     expect(r.ok).toBe(false);
     expect(r.error).toMatch(/OPENAQ_API_KEY/);
+    expect(r.reason).toBe('missing_api_key');
+    expect(r.envVar).toBe('OPENAQ_API_KEY');
+  });
+
+  it('tags HTTP 401 from the locations endpoint as invalid_api_key', async () => {
+    stubFetchStatus(401);
+    const r = await fetchOpenAQ({ lat: 40, lon: -3 });
+    expect(r.ok).toBe(false);
+    expect(r.reason).toBe('invalid_api_key');
+    expect(r.envVar).toBe('OPENAQ_API_KEY');
   });
 });

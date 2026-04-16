@@ -3,15 +3,31 @@ export interface Coordinates {
   lon: number;
 }
 
+export type SourceErrorReason = 'missing_api_key' | 'invalid_api_key';
+
 export interface SourceResult<T> {
   sourceId: string;
   ok: boolean;
   fetchedAt: Date;
   data: T | null;
   error?: string;
+  /** Structured error category — set when the failure is user-actionable (e.g. key config). */
+  reason?: SourceErrorReason;
+  /** Env var the user should set/fix when `reason` points at a key problem. */
+  envVar?: string;
   latencyMs: number;
   /** Distance to nearest monitoring station, when available */
   stationDistanceKm?: number;
+}
+
+export interface ConfigHint {
+  sourceId: string;
+  envVar: string;
+  reason: SourceErrorReason;
+  /** Human-readable guidance (LLM-friendly); includes setup URL when known. */
+  message: string;
+  /** Approx. confidence score this source contributes (1 / applicable count). */
+  confidenceImpact: number;
 }
 
 export interface WeatherData {
@@ -209,7 +225,14 @@ export interface CompareSourcesResponse {
   timestampUtc: string;
   sources: Record<
     string,
-    { ok: boolean; data: unknown; latencyMs: number; error?: string }
+    {
+      ok: boolean;
+      data: unknown;
+      latencyMs: number;
+      error?: string;
+      reason?: SourceErrorReason;
+      envVar?: string;
+    }
   >;
   discrepancies: Discrepancy[];
 }
@@ -266,6 +289,8 @@ export interface AggregatedConditions {
   confidence: ConfidenceScore;
   risk: RiskAssessment;
   discrepancies: Discrepancy[];
+  /** Actionable setup hints (missing/invalid API keys). Empty when all sources are configured. */
+  configHints: ConfigHint[];
 }
 
 export interface Discrepancy {
