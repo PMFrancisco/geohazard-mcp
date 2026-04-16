@@ -1,4 +1,4 @@
-# Planetary Risk
+# Geohazard
 
 An open-source MCP server that aggregates real-time environmental and natural-hazard data from 12 public sources into a unified risk assessment. Point any MCP-compatible client (Claude Desktop, Cursor, your own agent) at the server and query planetary conditions by coordinate.
 
@@ -93,8 +93,8 @@ Cross-source disagreements are detected separately and surfaced on `AggregatedCo
 ### Install
 
 ```bash
-git clone https://github.com/<your-org>/planetary-risk.git
-cd planetary-risk
+git clone https://github.com/<your-org>/geohazard.git
+cd geohazard
 pnpm install
 cp .env.example .env   # edit to add optional API keys
 ```

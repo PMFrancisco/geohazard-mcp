@@ -25,7 +25,7 @@ export async function fetchNoaaNws(
       `?point=${coords.lat},${coords.lon}`;
 
     const res = await fetchWithTimeout(url, {
-      headers: { 'User-Agent': 'planetary-risk/1.0' },
+      headers: { 'User-Agent': 'geohazard/1.0' },
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
 

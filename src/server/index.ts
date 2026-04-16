@@ -10,7 +10,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { TOOLS } from './tools/registry.js';
 import { buildHttpApp } from './http.js';
 
-const server = new McpServer({ name: 'planetary-risk', version: '1.0.0' });
+const server = new McpServer({ name: 'geohazard', version: '1.0.0' });
 
 // Register every tool once against the MCP server
 for (const [name, { description, schema, handler }] of Object.entries(TOOLS)) {
