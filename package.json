@@ -1,6 +1,6 @@
 {
   "name": "geohazard-mcp",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "MCP server aggregating real-time environmental and natural-hazard data from 12 public sources into a unified risk assessment.",
   "keywords": [
     "mcp",
@@ -76,7 +76,6 @@
     "@types/node": "^25.6.0",
     "@types/supertest": "^7.2.0",
     "@vitest/coverage-v8": "^4.1.4",
-    "dotenv": "^17.4.2",
     "eslint": "^10.2.0",
     "eslint-config-prettier": "^10.1.8",
     "husky": "^9.1.7",
@@ -90,6 +89,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
+    "dotenv": "^17.4.2",
     "cors": "^2.8.6",
     "express": "^5.2.1",
     "express-rate-limit": "^8.3.2",
