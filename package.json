@@ -1,6 +1,6 @@
 {
   "name": "geohazard-mcp",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "MCP server aggregating real-time environmental and natural-hazard data from 12 public sources into a unified risk assessment.",
   "keywords": [
     "mcp",
