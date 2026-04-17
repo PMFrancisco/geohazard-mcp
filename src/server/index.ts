@@ -1,13 +1,4 @@
 #!/usr/bin/env node
-import { config } from 'dotenv';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-// `quiet: true` suppresses dotenv's v17+ startup banner. Critical for stdio
-// transport — any stdout noise corrupts the MCP JSON-RPC stream.
-config({ path: path.resolve(__dirname, '..', '..', '.env'), quiet: true });
-
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { TOOLS } from './tools/registry.js';
