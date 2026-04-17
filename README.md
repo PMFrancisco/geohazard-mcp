@@ -85,38 +85,30 @@ Cross-source disagreements are detected separately and surfaced on `AggregatedCo
 
 ## Quick Start
 
-### Prerequisites
+### Use with Claude Desktop / Cursor
 
-- Node.js >= 20
-- pnpm >= 10
+Add to your MCP client config:
 
-### Install
-
-```bash
-git clone https://github.com/PMFrancisco/geohazard-mcp.git
-cd geohazard-mcp
-pnpm install
-cp .env.example .env   # edit to add optional API keys
+```json
+{
+  "mcpServers": {
+    "geohazard": {
+      "command": "npx",
+      "args": ["-y", "geohazard-mcp"],
+      "env": {
+        "NASA_FIRMS_KEY": "your-key-here",
+        "OPENAQ_API_KEY": "your-key-here"
+      }
+    }
+  }
+}
 ```
 
-### Run the MCP server
+> **Windows**: use `"command": "npx.cmd"` instead of `"command": "npx"`.
 
-**stdio transport** (for Claude Desktop, Cursor, etc.) — launch the server entry point directly:
+API keys are optional — without them those layers are skipped. Register for free: [NASA FIRMS](https://firms.modaps.eosdis.nasa.gov/api/map_key/) · [OpenAQ](https://explore.openaq.org).
 
-```bash
-tsx src/server/index.ts
-```
-
-**HTTP transport** (for remote clients or the companion SaaS app):
-
-```bash
-pnpm dev:server
-# Listening on http://localhost:3000
-```
-
-`pnpm dev` runs [src/index.ts](src/index.ts) as a quick smoke test that prints aggregated conditions for Madrid — handy for verifying the aggregator without spinning up the MCP layer.
-
-### Docker
+### Use with Docker
 
 ```bash
 docker compose up
@@ -126,19 +118,51 @@ The container starts on port 3000 with HTTP transport. Pass API keys via environ
 
 ## Configuration
 
-See [.env.example](.env.example) for all options:
+| Variable              | Default  | Description                                                          |
+| --------------------- | -------- | -------------------------------------------------------------------- |
+| `NASA_FIRMS_KEY`      | —        | NASA FIRMS API key — fire layer skipped if unset                     |
+| `OPENAQ_API_KEY`      | —        | OpenAQ API key — station AQ layer skipped if unset                   |
+| `CACHE_TTL_SECONDS`   | `300`    | In-memory cache TTL                                                  |
+| `DEFAULT_RADIUS_KM`   | `500`    | Default search radius for nearby events (seismic lookback is 7 days) |
+| `MCP_PORT`            | `3000`   | HTTP server port                                                     |
+| `MCP_TRANSPORT`       | `stdio`  | `stdio` or `http`                                                    |
+| `MCP_ALLOWED_ORIGINS` | —        | Comma-separated CORS origins                                         |
+| `LOG_DIR`             | `./logs` | Directory for discrepancy and request logs                           |
+| `LOG_LEVEL`           | `info`   | Log verbosity                                                        |
 
-| Variable              | Default  | Description                                                                                                      |
-| --------------------- | -------- | ---------------------------------------------------------------------------------------------------------------- |
-| `NASA_FIRMS_KEY`      | —        | NASA FIRMS API key ([register](https://firms.modaps.eosdis.nasa.gov/api/map_key/)) — fire layer skipped if unset |
-| `OPENAQ_API_KEY`      | —        | OpenAQ API key ([register](https://explore.openaq.org)) — station AQ layer skipped if unset                      |
-| `CACHE_TTL_SECONDS`   | `300`    | In-memory cache TTL                                                                                              |
-| `DEFAULT_RADIUS_KM`   | `500`    | Default search radius for nearby events (seismic lookback is 7 days)                                             |
-| `MCP_PORT`            | `3000`   | HTTP server port                                                                                                 |
-| `MCP_TRANSPORT`       | `stdio`  | `stdio` or `http`                                                                                                |
-| `MCP_ALLOWED_ORIGINS` | —        | Comma-separated CORS origins                                                                                     |
-| `LOG_DIR`             | `./logs` | Directory for discrepancy and request logs                                                                       |
-| `LOG_LEVEL`           | `info`   | Log verbosity                                                                                                    |
+## Development
+
+### Prerequisites
+
+- Node.js >= 20
+- pnpm >= 10
+
+### Setup
+
+```bash
+git clone https://github.com/PMFrancisco/geohazard-mcp.git
+cd geohazard-mcp
+pnpm install
+cp .env.example .env   # edit to add optional API keys
+```
+
+### Run locally
+
+```bash
+pnpm dev:server        # HTTP transport on :3000
+pnpm dev               # Quick smoke test (prints conditions for Madrid)
+```
+
+### Code quality
+
+```bash
+pnpm typecheck    # Type-check without emitting
+pnpm lint         # ESLint
+pnpm format       # Prettier (write)
+pnpm build        # Compile to dist/
+```
+
+Commits follow [Conventional Commits](https://www.conventionalcommits.org/) enforced by commitlint and husky.
 
 ## Project Structure
 
@@ -146,9 +170,9 @@ See [.env.example](.env.example) for all options:
 src/
   types/          Shared TypeScript interfaces
   sources/
-    registry.ts   Single source of truth: fetch wiring, freshness, applicability, risk hooks
+    registry.ts   Source registry: fetch wiring, freshness, applicability, risk hooks
     http.ts       fetchWithTimeout + sourceError helpers shared by every adapter
-    aqi.ts        US EPA AQI computation + µg/m³ → ppb/ppm conversions
+    aqi.ts        US EPA AQI computation + unit conversions
     *.ts          One adapter per external data source
   aggregator/
     index.ts      Registry-driven fan-out; merges sources into AggregatedConditions
@@ -165,19 +189,7 @@ src/
     http.ts       Express wrapper for HTTP transport
     index.ts      MCP entry point (stdio or HTTP based on MCP_TRANSPORT)
   index.ts        Library export + Madrid smoke test
-ml/               Reserved for Phase P4 (XGBoost training, RAG embeddings)
 ```
-
-## Development
-
-```bash
-pnpm typecheck    # Type-check without emitting
-pnpm lint         # ESLint
-pnpm format       # Prettier (write)
-pnpm build        # Compile to dist/
-```
-
-Commits follow [Conventional Commits](https://www.conventionalcommits.org/) enforced by commitlint and husky.
 
 ## Testing
 
